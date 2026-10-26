@@ -1,6 +1,6 @@
 import { loadPosts, addComment, deleteComment, savePost, COMMENT_LIMITS, dateIn, zoneLabel, TIME_ZONE, VIEWER_TIME_ZONE, ACCOUNTS } from "./data.js";
 import { currentUser, signInWithGoogle, signOut, onAuthChange } from "./supabase.js";
-import { openComposer } from "./composer.js";
+import { openComposer, takeStashedDraft } from "./composer.js";
 import { initThemeToggle } from "./theme.js";
 
 const PLATFORMS = {
@@ -729,10 +729,11 @@ function upsertPost(saved) {
   state.byDay = index(state.posts);
 }
 
-function compose(existing = null, day = state.selected) {
+function compose(existing = null, day = state.selected, restore = null) {
   openComposer({
     existing,
     day,
+    restore,
     preview,
     onSaved: (saved) => {
       upsertPost(saved);
@@ -814,10 +815,10 @@ function index(posts) {
 }
 
 render();
-refreshUser();
+const userReady = refreshUser();
 onAuthChange(refreshUser);
 
-loadPosts()
+const postsReady = loadPosts()
   .then((posts) => {
     state.posts = posts;
     state.byDay = index(posts);
@@ -827,3 +828,10 @@ loadPosts()
     console.error(err);
     els.sub.textContent = "Couldn't load posts. Refresh to try again.";
   });
+
+// Back from signing in again for Drive: reopen the post that was being written.
+Promise.all([userReady, postsReady]).then(() => {
+  const stash = takeStashedDraft();
+  if (!stash || !isEditor()) return;
+  compose(state.posts.find((p) => p.id === stash.draft.id) ?? null, state.selected, stash);
+});
