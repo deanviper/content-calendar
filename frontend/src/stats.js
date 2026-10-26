@@ -1,4 +1,4 @@
-import { loadStats, addMarker } from "./stats-data.js";
+import { loadStats, addMarker, resync } from "./stats-data.js";
 import { manilaDate } from "./data.js";
 import { initThemeToggle } from "./theme.js";
 
@@ -607,10 +607,50 @@ new ResizeObserver(([entry]) => {
 
 $("marker-form").markedAt.value = defaultWhen();
 
+// Stats are pulled daily by the schedule; Resync pulls them now and marks drafts that have gone live.
+const syncFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+function showLastSync() {
+  const at = state.data?.lastSync;
+  $("sync-note").textContent = at ? `Last synced ${syncFmt.format(new Date(at))}` : "Not synced yet";
+}
+
+function syncSummary(results = []) {
+  const parts = [];
+  const posted = results.reduce((n, r) => n + (r.posted ?? 0), 0);
+  if (posted) parts.push(`${posted} ${posted === 1 ? "draft" : "drafts"} marked posted`);
+  for (const r of results) {
+    const name = r.platform === "x" ? "X" : "LinkedIn";
+    if (r.error) parts.push(`${name} failed: ${r.error}`);
+    else if (r.skipped) parts.push(`${name} isn't connected yet`);
+  }
+  return parts.join(" · ");
+}
+
+$("resync").addEventListener("click", async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.textContent = "Syncing…";
+  try {
+    const out = await resync();
+    state.data = await loadStats();
+    render();
+    showLastSync();
+    const summary = syncSummary(out.results);
+    if (summary) $("sync-note").textContent = summary;
+  } catch (err) {
+    $("sync-note").textContent = `Couldn't sync: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Resync now";
+  }
+});
+
 loadStats()
   .then((data) => {
     state.data = data;
     render();
+    showLastSync();
   })
   .catch((err) => {
     console.error(err);

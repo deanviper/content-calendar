@@ -6,26 +6,31 @@
 //   daily:     [{ day: "YYYY-MM-DD", platform, impressions, engagements }]  running totals at day end
 //   followers: [{ day, platform, followers }]
 //   markers:   [{ id, label, markedAt, platform, note }]
+//   lastSync:  ISO time of the collector's last run, or null
 //   live:      true when the data came from Supabase
 //
 // With Supabase configured these come from the post_performance, daily_post_metrics and
 // daily_followers views and the stat_markers table. Otherwise a sample history is generated.
 
 import { configured, db, signedIn } from "./supabase.js";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 
 export async function loadStats() {
   if (!configured) return sampleStats(new Date());
   await signedIn();
   const supabase = await db();
-  const [posts, daily, followers, markers] = await Promise.all([
+  const [posts, daily, followers, markers, sync] = await Promise.all([
     supabase.from("post_performance").select("*").order("published_at", { ascending: false }),
     supabase.from("daily_post_metrics").select("*").order("day"),
     supabase.from("daily_followers").select("*").order("day"),
     supabase.from("stat_markers").select("*").order("marked_at"),
+    // Every run records follower counts, so the newest one is when stats were last pulled.
+    supabase.from("account_metric_snapshots").select("captured_at").order("captured_at", { ascending: false }).limit(1),
   ]);
-  for (const r of [posts, daily, followers, markers]) if (r.error) throw r.error;
+  for (const r of [posts, daily, followers, markers, sync]) if (r.error) throw r.error;
   return {
     live: true,
+    lastSync: sync.data[0]?.captured_at ?? null,
     posts: posts.data.map((p) => ({
       id: p.id,
       platform: p.platform,
@@ -43,6 +48,26 @@ export async function loadStats() {
     followers: followers.data.map((f) => ({ day: f.day, platform: f.platform, followers: Number(f.followers) })),
     markers: markers.data.map(markerRow),
   };
+}
+
+// Runs the collector now, as the signed-in editor: finds posts that went live, marks their drafts
+// as posted, and pulls fresh numbers. Returns the collector's per-platform results.
+export async function resync() {
+  if (!configured) {
+    await new Promise((r) => setTimeout(r, 600));
+    return { results: [{ platform: "x", posted: 0, snapshots: 0 }, { platform: "linkedin", posted: 0, snapshots: 0 }] };
+  }
+  const supabase = await db();
+  const { data } = await supabase.auth.getSession();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/collect-stats`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${data.session?.access_token}`, apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+    body: "{}",
+  });
+  if (res.status === 404) throw new Error("the stats collector isn't deployed yet");
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok && res.status !== 207) throw new Error(body.error ?? `the collector answered ${res.status}`);
+  return body;
 }
 
 function markerRow(m) {
@@ -161,6 +186,7 @@ function sampleStats(now) {
 
   return {
     live: false,
+    lastSync: new Date(today.getTime() + 3_600_000).toISOString(),
     posts: rows,
     daily,
     followers,

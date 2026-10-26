@@ -5,14 +5,15 @@
 select vault.create_secret('https://YOUR-PROJECT-REF.supabase.co/functions/v1/collect-stats', 'collector_url');
 select vault.create_secret('YOUR-COLLECTOR-SECRET', 'collector_secret');
 
--- 2. Schedule it. Every 6 hours keeps well inside the X API's lookup limits; collect more often if
---    your X plan allows. Each run adds one snapshot per post published in the last LOOKBACK_DAYS.
+-- 2. Schedule it daily at 01:00 UTC (09:00 Manila). Each run marks drafts that have gone live as
+--    posted and adds one snapshot per post published in the last LOOKBACK_DAYS. The Resync button
+--    on the stats page runs the same thing on demand.
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
 
 select cron.schedule(
   'collect-stats',
-  '0 */6 * * *',
+  '0 1 * * *',
   $$
   select net.http_post(
     url := (select decrypted_secret from vault.decrypted_secrets where name = 'collector_url'),
