@@ -19,9 +19,28 @@ function token() {
   try { return JSON.parse(sessionStorage.getItem(KEY)); } catch { return null; }
 }
 
-// Called with Google's token when a sign-in comes back from Google.
+// Raised when Drive needs a fresh Google sign-in: no token, an expired one, or one without
+// Drive access (Supabase also keeps tokens from sign-ins that never asked for Drive).
+export class DriveAccessError extends Error {}
+
+// Called with the Google token a signed-in session carries. It is kept only if Google confirms it
+// grants Drive access, with the expiry Google reports.
+let checking = Promise.resolve();
+
 export function rememberDriveToken(value) {
-  try { sessionStorage.setItem(KEY, JSON.stringify({ value, expires: Date.now() + 55 * 60_000 })); } catch { /* none kept */ }
+  if (token()?.value === value) return checking;
+  return (checking = check(value));
+}
+
+async function check(value) {
+  try {
+    const res = await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${encodeURIComponent(value)}`);
+    const info = res.ok ? await res.json() : null;
+    if (!info?.scope?.split(" ").includes(DRIVE_SCOPE)) return forgetDriveToken();
+    sessionStorage.setItem(KEY, JSON.stringify({ value, expires: Date.now() + Number(info.expires_in) * 1000 }));
+  } catch {
+    forgetDriveToken();
+  }
 }
 
 export function forgetDriveToken() {
@@ -30,13 +49,22 @@ export function forgetDriveToken() {
 
 export const driveReady = () => Boolean(token()?.expires > Date.now() + 60_000);
 
+// Whether uploads can go ahead, once any token check in progress has finished.
+export async function driveAccess() {
+  await checking;
+  return driveReady();
+}
+
 async function call(url, init = {}) {
-  if (!driveReady()) throw new Error("Google Drive access has run out. Sign in again to upload.");
+  if (!driveReady()) throw new DriveAccessError("Google Drive access has run out.");
   const res = await fetch(url, { ...init, headers: { Authorization: `Bearer ${token().value}`, ...init.headers } });
   if (!res.ok) {
-    if (res.status === 401) forgetDriveToken();
     let msg = `${res.status}`;
     try { msg = (await res.json()).error?.message ?? msg; } catch { /* keep the status */ }
+    if (res.status === 401 || /insufficient.*scope/i.test(msg)) {
+      forgetDriveToken();
+      throw new DriveAccessError(`Google Drive: ${msg}`);
+    }
     throw new Error(`Google Drive: ${msg}`);
   }
   return res;
