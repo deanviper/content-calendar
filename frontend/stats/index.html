@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Stats · Silencio</title>
+  <link rel="icon" href="../assets/mark.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../src/styles.css">
+  <link rel="stylesheet" href="../src/stats.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="./" aria-label="Silencio stats">
+      <img class="brand-logo" src="../assets/logo.svg" alt="silencio" width="102" height="24">
+      <span class="brand-scope">Stats</span>
+    </a>
+    <a class="pill-btn" href="../">Calendar</a>
+  </header>
+
+  <main class="stats">
+    <div class="stats-head">
+      <div>
+        <h1>How our posts are doing</h1>
+        <p class="period-sub" id="sub"></p>
+      </div>
+    </div>
+
+    <div class="filters">
+      <div class="segmented" role="radiogroup" aria-label="Date range" id="ranges">
+        <button type="button" role="radio" data-range="7" aria-checked="false">7 days</button>
+        <button type="button" role="radio" data-range="30" aria-checked="true">30 days</button>
+        <button type="button" role="radio" data-range="90" aria-checked="false">90 days</button>
+        <button type="button" role="radio" data-range="all" aria-checked="false">All</button>
+      </div>
+      <div class="segmented" role="radiogroup" aria-label="Platform" id="platforms">
+        <button type="button" role="radio" data-platform="all" aria-checked="true">All</button>
+        <button type="button" role="radio" data-platform="x" aria-checked="false">X</button>
+        <button type="button" role="radio" data-platform="linkedin" aria-checked="false">LinkedIn</button>
+      </div>
+    </div>
+
+    <section class="kpis" id="kpis" aria-label="Totals for the range"></section>
+
+    <section class="panel" aria-labelledby="imp-title">
+      <div class="panel-head">
+        <h2 id="imp-title">Impressions gained per day</h2>
+        <ul class="legend" id="imp-legend"></ul>
+      </div>
+      <div class="chart" id="imp-chart"></div>
+      <details class="table-view">
+        <summary>Show daily numbers</summary>
+        <div id="imp-table"></div>
+      </details>
+    </section>
+
+    <div class="two">
+      <section class="panel" aria-labelledby="marker-title">
+        <div class="panel-head">
+          <h2 id="marker-title">Before and after a marker</h2>
+          <select class="field" id="marker-select" aria-label="Marker"></select>
+        </div>
+        <div id="marker-compare"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="fol-title">
+        <div class="panel-head"><h2 id="fol-title">Followers</h2></div>
+        <div class="multiples" id="fol-charts"></div>
+      </section>
+    </div>
+
+    <section class="panel" aria-labelledby="posts-title">
+      <div class="panel-head">
+        <h2 id="posts-title">Posts published in the range</h2>
+        <p class="panel-note" id="posts-note"></p>
+      </div>
+      <div class="table-wrap"><table class="posts-table" id="posts-table"></table></div>
+      <button type="button" class="pill-btn more-btn" id="posts-more" hidden></button>
+    </section>
+
+    <section class="panel" aria-labelledby="markers-title">
+      <div class="panel-head"><h2 id="markers-title">Markers</h2></div>
+      <p class="panel-note">A marker names a moment, like a baseline or a campaign start, so the charts can show it and the comparison above can measure from it.</p>
+      <ul class="markers" id="markers"></ul>
+      <form class="marker-form" id="marker-form">
+        <label>Label<input class="field" name="label" required maxlength="80" placeholder="e.g. Campaign start"></label>
+        <label>When<input class="field" name="markedAt" type="datetime-local" required></label>
+        <label>Platform
+          <select class="field" name="platform">
+            <option value="">Both</option>
+            <option value="x">X</option>
+            <option value="linkedin">LinkedIn</option>
+          </select>
+        </label>
+        <label class="wide">Note<input class="field" name="note" maxlength="280" placeholder="Optional"></label>
+        <button class="pill-btn primary" type="submit">Add marker</button>
+        <p class="form-msg" role="status" id="marker-msg"></p>
+      </form>
+    </section>
+  </main>
+
+  <div class="tooltip" id="tooltip" role="presentation" hidden></div>
+
+  <script type="module" src="../src/stats.js"></script>
+</body>
+</html>
