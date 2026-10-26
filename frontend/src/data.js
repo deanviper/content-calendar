@@ -206,8 +206,8 @@ const SAMPLE = [
 ];
 
 const SAMPLE_COMMENTS = {
-  6: [{ id: "c1", authorName: "Anton", body: "Strong. Can we add the 1,000+ languages line?", createdAt: "2026-10-25T09:12:00+08:00" }],
-  7: [{ id: "c2", authorName: "Mia", body: "Love this one. Maybe pin it?", createdAt: "2026-10-25T14:40:00+08:00" }],
+  6: [{ id: "c1", authorName: "Alex", body: "Strong. Can we add the 1,000+ languages line?", createdAt: "2026-10-25T09:12:00+08:00" }],
+  7: [{ id: "c2", authorName: "Sam", body: "Love this one. Maybe pin it?", createdAt: "2026-10-25T14:40:00+08:00" }],
 };
 
 function samplePosts(now) {
