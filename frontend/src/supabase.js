@@ -1,4 +1,4 @@
-import { SUPABASE_URL, SUPABASE_ANON_KEY, EDITOR_EMAIL } from "./config.js";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, EDITOR_DOMAIN } from "./config.js";
 import { DRIVE_SCOPE, rememberDriveToken, forgetDriveToken } from "./drive.js";
 
 export const configured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
@@ -33,9 +33,9 @@ export async function signInWithGoogle() {
       redirectTo: location.origin + location.pathname + location.search,
       // Lets the calendar put photos and videos in the editor's Drive (see drive.js).
       scopes: DRIVE_SCOPE,
-      // Pre-selects the editor account in Google's picker; it does not grant anything by itself.
+      // Limits Google's picker to Silencio accounts; it does not grant anything by itself.
       // "consent" makes Google show the Drive permission even to someone who signed in before it.
-      queryParams: { login_hint: EDITOR_EMAIL, prompt: "select_account consent", include_granted_scopes: "true" },
+      queryParams: { hd: EDITOR_DOMAIN, prompt: "select_account consent", include_granted_scopes: "true" },
     },
   });
   if (error) throw error;
@@ -87,7 +87,7 @@ function signInScreen(user) {
   title.textContent = "Stats";
   const text = document.createElement("p");
   text.textContent = user
-    ? `${user.email} can't see stats. Sign in with ${EDITOR_EMAIL}.`
+    ? `${user.email} can't see stats. Sign in with the editor's Silencio account.`
     : "Sign in with your Silencio Google account.";
   const btn = document.createElement("button");
   btn.className = "pill primary";

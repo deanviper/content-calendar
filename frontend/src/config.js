@@ -4,6 +4,6 @@
 export const SUPABASE_URL = "https://bgqqnykoeegqclxelvmf.supabase.co";
 export const SUPABASE_ANON_KEY = "sb_publishable_m-WlGWOvKs42liOCiM782Q_Nv_gY8kQ";
 
-// Shown as the suggested account on Google's sign-in screen. Who can edit is decided by the
+// Google's sign-in offers only accounts on this domain. Who can edit is decided by the
 // public.editors table, not by this value.
-export const EDITOR_EMAIL = "joaquin@silencio.network";
+export const EDITOR_DOMAIN = "silencio.network";
