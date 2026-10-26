@@ -28,9 +28,9 @@ post lands on the day of its `scheduledAt` in that zone.
 
 ## Branding
 
-Colours, type and the mark are placeholders in Silencio's minimal black and white style until the
-official brand files are added. To apply them, replace the tokens at the top of `src/styles.css` and
-`assets/mark.svg`.
+Colours, type and the logo come from silencio.network: a black ground, near-white ink, Geist, pill
+controls, and the site's sky, mint and amber accents (LinkedIn, scheduled, over-limit). The tokens sit
+at the top of `src/styles.css`; `assets/logo.svg` is the wordmark and `assets/mark.svg` the favicon.
 
 ## Keyboard
 

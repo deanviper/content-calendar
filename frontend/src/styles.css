@@ -1,44 +1,28 @@
-/* Brand tokens. Swap these for the official Silencio values; nothing else hard-codes a colour. */
+/* Brand tokens, taken from silencio.network: black ground, near-white ink, Geist, pill controls.
+   Nothing else in this file hard-codes a colour. */
 :root {
-  --ground: #f6f6f4;
-  --surface: #ffffff;
-  --weekend: #efefec;
-  --ink: #0b0b0b;
-  --ink-2: #5d5d5a;
-  --line: #e6e6e2;
-  --line-strong: #d4d4cf;
-  --accent: #0b0b0b;
-  --x: #0b0b0b;
-  --linkedin: #0a66c2;
-  --linkedin-tint: #e7f0fa;
-  --warn: #b42318;
-  --warn-tint: #fdecea;
+  --ground: #000000;
+  --surface: #0e0e0e;
+  --weekend: #070707;
+  --raised: #1a1a1a;
+  --ink: #fafafa;
+  --ink-2: rgba(255, 255, 255, 0.6);
+  --line: #1a1a1a;
+  --line-strong: #333333;
+  --x: #fafafa;
+  --linkedin: #7ec4e3;
+  --tag: #7ec4e3;
+  --scheduled: #7eea9b;
+  --scheduled-tint: rgba(126, 234, 155, 0.14);
+  --warn: #f2b76c;
+  --warn-tint: rgba(242, 183, 108, 0.14);
+  --soft: rgba(255, 255, 255, 0.15);
 
-  --font: "Instrument Sans", system-ui, sans-serif;
-  --radius: 6px;
+  --font: "Geist", system-ui, sans-serif;
+  --radius: 12px;
+  --pill: 64px;
   --gutter: 24px;
-  color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ground: #0b0b0b;
-    --surface: #141414;
-    --weekend: #101010;
-    --ink: #f4f4f2;
-    --ink-2: #a3a3a0;
-    --line: #222221;
-    --line-strong: #333331;
-    --accent: #f4f4f2;
-    --x: #f4f4f2;
-    --linkedin: #4c9ae8;
-    --linkedin-tint: #12263b;
-    --warn: #f97066;
-    --warn-tint: #3a1512;
-    color-scheme: dark;
-  }
-
-  .brand img { filter: invert(1); }
+  color-scheme: dark;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -82,10 +66,11 @@ button {
   text-decoration: none;
 }
 
-.brand-name {
-  font-weight: 600;
-  font-size: 18px;
-  letter-spacing: -0.02em;
+.brand-logo {
+  display: block;
+  height: 24px;
+  width: auto;
+  color: var(--ink);
 }
 
 .brand-scope {
@@ -97,8 +82,8 @@ button {
 .filter {
   display: flex;
   padding: 2px;
-  background: var(--weekend);
-  border-radius: 999px;
+  background: var(--soft);
+  border-radius: var(--pill);
 }
 
 .filter button {
@@ -110,8 +95,8 @@ button {
 }
 
 .filter button[aria-checked="true"] {
-  background: var(--surface);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--ground);
   font-weight: 500;
 }
 
@@ -159,14 +144,15 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--surface);
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--pill);
+  background: var(--soft);
+  font-weight: 500;
 }
 
-.ghost:hover { border-color: var(--ink-2); }
+.ghost:hover { background: var(--line-strong); }
 
 .weekdays,
 .days {
@@ -204,7 +190,7 @@ button {
 .cell.weekend { background: var(--weekend); }
 .cell.outside { color: var(--ink-2); }
 .cell.outside .date { opacity: 0.55; }
-.cell:hover { background: var(--weekend); }
+.cell:hover { background: var(--raised); }
 
 .cell[aria-selected="true"] {
   box-shadow: inset 0 0 0 2px var(--ink);
@@ -329,7 +315,7 @@ button {
   border-radius: var(--radius);
 }
 
-.post.is-suggested { border-style: dashed; border-color: var(--line-strong); }
+.post.is-suggested { border-style: dashed; border-color: var(--line-strong); background: var(--ground); }
 
 .post-head {
   display: flex;
@@ -357,7 +343,8 @@ button {
   color: var(--ink-2);
 }
 
-.status.scheduled { background: var(--ink); color: var(--ground); }
+.status { background: var(--soft); }
+.status.scheduled { background: var(--scheduled-tint); color: var(--scheduled); }
 
 .copy {
   margin: 0;
@@ -367,7 +354,7 @@ button {
 
 .tags {
   margin: 8px 0 0;
-  color: var(--linkedin);
+  color: var(--tag);
   font-size: 14px;
 }
 
@@ -394,8 +381,8 @@ button {
   width: 100%;
   aspect-ratio: 16 / 9;
   object-fit: contain;
-  border-radius: 4px;
-  background: var(--weekend);
+  border-radius: 8px;
+  background: var(--raised);
 }
 
 .asset figcaption {
