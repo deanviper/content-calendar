@@ -1,5 +1,6 @@
 import { loadStats, addMarker } from "./stats-data.js";
 import { manilaDate } from "./data.js";
+import { initThemeToggle } from "./theme.js";
 
 const PLATFORMS = {
   x: { name: "X", color: "var(--c-x)" },
@@ -8,6 +9,7 @@ const PLATFORMS = {
 const DAY = 86_400_000;
 
 const $ = (id) => document.getElementById(id);
+initThemeToggle($("theme-toggle"));
 const tooltip = $("tooltip");
 
 const state = { data: null, range: 30, platform: "all", marker: null };

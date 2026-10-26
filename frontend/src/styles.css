@@ -19,6 +19,12 @@
   --tag: #b4b4b4;
   --warn: #f2b76c;
   --warn-tint: #2b2414;
+  --danger: #ff8a80;
+  --primary-hover: #e6e6e6;
+  --ink-seg: #bbbbbb;
+  --ink-4: #4a4a4a;           /* dates outside the month */
+  --hover: #080808;
+  --backdrop: rgba(0, 0, 0, 0.8);
 
   --font: "Geist", system-ui, sans-serif;
   --radius: 20px;
@@ -26,6 +32,38 @@
   --gutter: 32px;
   color-scheme: dark;
 }
+
+/* Light: the same flat system inverted. White ground, surfaces a step darker, black type and
+   black pills, and a deeper amber so suggested posts keep their contrast on white. The theme is
+   set on <html> by the script at the top of each page (system setting unless the viewer chose). */
+:root[data-theme="light"] {
+  --ground: #ffffff;
+  --surface: #f4f4f4;
+  --raised: #e9e9e9;
+  --ink: #000000;
+  --ink-2: #4f4f4f;
+  --ink-3: #686868;
+  --line: #ededed;
+  --line-strong: #d6d6d6;
+  --control: #a8a8a8;
+  --soft: #e9e9e9;
+
+  --decide: #9a5b0c;
+  --decide-tint: #fbefdc;
+  --done: #8c8c8c;
+  --tag: #4f4f4f;
+  --warn: #9a5b0c;
+  --warn-tint: #fbefdc;
+  --danger: #c0352b;
+  --primary-hover: #2b2b2b;
+  --ink-seg: #4f4f4f;
+  --ink-4: #b5b5b5;
+  --hover: #fafafa;
+  --backdrop: rgba(0, 0, 0, 0.35);
+  color-scheme: light;
+}
+/* The logo file is white; flip it for the white ground. */
+:root[data-theme="light"] .brand-logo { filter: invert(1); }
 
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -77,7 +115,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .icon-btn { width: 36px; }
 .pill:hover, .pill-btn:hover, .icon-btn:hover { background: var(--line-strong); }
 .pill.primary, .pill-btn.primary { background: var(--ink); color: var(--ground); }
-.pill.primary:hover, .pill-btn.primary:hover { background: #e6e6e6; }
+.pill.primary:hover, .pill-btn.primary:hover { background: var(--primary-hover); }
 .pill:disabled { opacity: 0.5; cursor: default; }
 
 .segmented { display: flex; padding: 3px; border-radius: var(--pill); background: var(--surface); }
@@ -91,7 +129,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   border: 0;
   border-radius: var(--pill);
   background: none;
-  color: #bbbbbb;
+  color: var(--ink-seg);
 }
 .segmented button:hover { color: var(--ink); }
 .segmented button[aria-checked="true"] { background: var(--raised); color: var(--ink); font-weight: 500; }
@@ -194,8 +232,8 @@ textarea.field { padding: 10px 14px; resize: vertical; }
 }
 .cell:first-child { border-left: 0; }
 [data-view="week"] .cell { min-height: 440px; }
-.cell:hover { background: #080808; }
-.cell.outside .date { color: #4a4a4a; }
+.cell:hover { background: var(--hover); }
+.cell.outside .date { color: var(--ink-4); }
 .cell.outside .lines { opacity: 0.5; }
 .cell:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--ink); }
 
@@ -312,7 +350,8 @@ textarea.field { padding: 10px 14px; resize: vertical; }
 .pv-media { display: grid; gap: 2px; margin-top: 14px; overflow: hidden; border-radius: 16px; }
 .pv-media.n2, .pv-media.n3, .pv-media.n4 { grid-template-columns: 1fr 1fr; }
 .pv-li .pv-media { border-radius: 6px; }
-.pv-media img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: var(--ground); }
+.pv-media img, .pv-media video, .pv-media iframe { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; object-fit: cover; background: var(--ground); }
+.pv-media video { object-fit: contain; }
 
 .post-foot {
   display: flex;
@@ -354,7 +393,7 @@ textarea.field { padding: 10px 14px; resize: vertical; }
   background: var(--surface);
   color: var(--ink);
 }
-.help::backdrop { background: rgba(0, 0, 0, 0.75); }
+.help::backdrop { background: var(--backdrop); }
 .help h2 { margin: 0 0 18px; font-size: 18px; font-weight: 500; }
 .help dl { display: grid; grid-template-columns: auto 1fr; gap: 10px 16px; margin: 0 0 22px; }
 .help dt { white-space: nowrap; }
@@ -413,13 +452,13 @@ kbd {
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .link { padding: 0; border: 0; background: none; color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; }
 .link:hover { color: var(--ink); }
-.pill.danger { color: #ff8a80; }
+.pill.danger { color: var(--danger); }
 
 .account { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 56px; font-size: 13px; color: var(--ink-3); }
 .account:empty { display: none; }
 
 .comment-delete { margin-left: auto; padding: 0; border: 0; background: none; color: var(--ink-3); font-size: 12px; }
-.comment-delete:hover { color: #ff8a80; }
+.comment-delete:hover { color: var(--danger); }
 
 /* Composer: the form on the left, the post as it will look on the right. */
 
@@ -434,7 +473,7 @@ kbd {
   overflow: hidden;
 }
 .composer[open] { display: flex; flex-direction: column; }
-.composer::backdrop { background: rgba(0, 0, 0, 0.8); }
+.composer::backdrop { background: var(--backdrop); }
 
 .composer-head { display: flex; align-items: center; justify-content: space-between; padding: 22px 28px 0; }
 .composer-head h2 { margin: 0; font-size: 24px; font-weight: 500; letter-spacing: -0.03em; }
@@ -461,7 +500,7 @@ kbd {
 
 .cf-assets { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .cf-thumb { position: relative; width: 96px; margin: 0; }
-.cf-thumb img { display: block; width: 96px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; background: var(--ground); }
+.cf-thumb img, .cf-thumb video { display: block; width: 96px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; background: var(--ground); }
 .cf-remove {
   position: absolute;
   top: -8px;
@@ -497,3 +536,8 @@ kbd {
   .composer-preview { position: static; }
   .cf .segmented { justify-self: stretch; overflow-x: auto; }
 }
+
+/* Theme toggle: shows the mode it switches to. */
+#theme-toggle .i-moon { display: none; }
+:root[data-theme="light"] #theme-toggle .i-sun { display: none; }
+:root[data-theme="light"] #theme-toggle .i-moon { display: block; }
