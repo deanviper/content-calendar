@@ -4,7 +4,7 @@
 //   {
 //     id: string,
 //     platform: "x" | "linkedin",
-//     status: "scheduled" | "suggested",
+//     status: "draft" | "suggested" | "scheduled" | "published",
 //     scheduledAt: ISO 8601 string with offset, e.g. "2026-10-28T09:00:00+08:00",
 //     copy: string,            // line breaks are kept
 //     hashtags: string[],      // without the "#"
@@ -17,6 +17,13 @@
 export const API_URL = null;
 
 export const TIME_ZONE = "Asia/Manila";
+export const TIME_ZONE_LABEL = "Manila, GMT+8";
+
+// The account each platform preview is drawn as.
+export const ACCOUNTS = {
+  x: { name: "Silencio", handle: "@silencioNetwork" },
+  linkedin: { name: "Silencio", handle: "Company page" },
+};
 
 export async function loadPosts() {
   if (API_URL) {
@@ -46,8 +53,8 @@ const SAMPLE = [
   [8, "x", "suggested", "13:00", "A million noise readings later, the surprise: parks are not as quiet as people think. Our full breakdown goes live this week, so tell us which city you want covered next and we'll add it to the report before it ships.", [], []],
   [12, "x", "scheduled", "09:00", "New in the app: venue noise profiles. Check how loud a restaurant gets before you book.", ["ProductUpdate"], [asset("quote-card.svg", "quote-card.svg", "Black card reading: Quiet is a public good. Measure it.")]],
   [12, "linkedin", "scheduled", "09:30", "Venue noise profiles are live.\n\nFor venue owners: see how your space compares to the street and to similar venues nearby, and share a verified quiet score with guests.", ["Hospitality", "ProductUpdate"], [asset("quote-card.svg", "quote-card.svg", "Black card reading: Quiet is a public good. Measure it.")]],
-  [16, "x", "suggested", "18:00", "What should we measure next: classrooms, hospitals or offices?", [], []],
-  [19, "linkedin", "suggested", "08:00", "Month in review: new countries, new sensors, and what the data says about city nights.", ["Update"], []],
+  [16, "x", "draft", "18:00", "What should we measure next: classrooms, hospitals or offices?", [], []],
+  [19, "linkedin", "draft", "08:00", "Month in review: new countries, new sensors, and what the data says about city nights.", ["Update"], []],
   [22, "x", "scheduled", "12:00", "Community call this Thursday. Bring questions about rewards, the app and the roadmap.", ["Silencio"], []],
 ];
 
@@ -59,7 +66,8 @@ function samplePosts(now) {
     return {
       id: `sample-${i + 1}`,
       platform,
-      status,
+      // Sample posts in the past have gone out; a real backend reports this itself.
+      status: offset < 0 && status === "scheduled" ? "published" : status,
       scheduledAt: `${date}T${time}:00+08:00`,
       copy,
       hashtags,

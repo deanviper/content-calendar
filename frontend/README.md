@@ -1,8 +1,19 @@
 # Content calendar front end
 
-A monthly calendar of scheduled and suggested posts for X and LinkedIn. Days with content carry a
-marker per post; clicking a day lists its posts with the copy, hashtags, assets and a character
-count against each platform's limit, plus a button to copy the text.
+A content calendar for X and LinkedIn, built on the patterns of the leading social schedulers
+(Buffer, Sprout Social, Hootsuite) and the WAI-ARIA grid pattern:
+
+- **Month and week views.** Month shows a chip per post (platform, time, opening words); week shows
+  each post as a card with its status and image.
+- **Workflow status.** Draft, suggested, scheduled and published each have their own mark, and the
+  status chips above the grid filter by status and show the counts. The platform filter sits in the bar.
+- **Platform-native previews.** The day panel draws each post the way X or LinkedIn lays it out,
+  including LinkedIn's "see more" fold at about 210 characters, so copy is judged in place.
+- **Ready to post.** Character count against each platform's limit, Copy text, and asset downloads.
+- **Gaps.** Upcoming weekdays with nothing planned are listed under the grid.
+- **Keyboard.** Arrows move between days, Page Up/Down change period, T is today, M/W switch view,
+  ? lists the shortcuts. The selected day is kept in the URL hash.
+- **Phone.** The grid folds to status dots and the day opens below it.
 
 No build step. Serve the folder and open it:
 
@@ -32,7 +43,3 @@ Colours, type and the logo come from silencio.network: a black ground, near-whit
 controls, and the site's sky, mint and amber accents (LinkedIn, scheduled, over-limit). The tokens sit
 at the top of `src/styles.css`; `assets/logo.svg` is the wordmark and `assets/mark.svg` the favicon.
 
-## Keyboard
-
-Arrow keys move between days, Page Up and Page Down change month. The selected day is kept in the URL
-hash, so `#2026-10-28` links straight to that day.

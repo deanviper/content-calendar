@@ -11,65 +11,78 @@
   <link rel="stylesheet" href="src/styles.css">
 </head>
 <body>
+  <a class="skip" href="#day">Skip to the selected day</a>
+
   <header class="bar">
     <a class="brand" href="./" aria-label="Silencio content calendar">
       <img class="brand-logo" src="assets/logo.svg" alt="silencio" width="102" height="24">
       <span class="brand-scope">Content calendar</span>
     </a>
-    <div class="filter" role="radiogroup" aria-label="Platform">
-      <button type="button" role="radio" data-platform="all" aria-checked="true">All</button>
-      <button type="button" role="radio" data-platform="x" aria-checked="false">X</button>
-      <button type="button" role="radio" data-platform="linkedin" aria-checked="false">LinkedIn</button>
+    <div class="bar-controls">
+      <div class="segmented" role="radiogroup" aria-label="View">
+        <button type="button" role="radio" data-view="month" aria-checked="true">Month</button>
+        <button type="button" role="radio" data-view="week" aria-checked="false">Week</button>
+      </div>
+      <div class="segmented" role="radiogroup" aria-label="Platform" id="platforms">
+        <button type="button" role="radio" data-platform="all" aria-checked="true">All</button>
+        <button type="button" role="radio" data-platform="x" aria-checked="false" aria-label="X">
+          <svg class="pf" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x"/></svg>
+        </button>
+        <button type="button" role="radio" data-platform="linkedin" aria-checked="false" aria-label="LinkedIn">
+          <svg class="pf" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-linkedin"/></svg>
+        </button>
+      </div>
+      <button type="button" class="icon-btn" id="help-open" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
     </div>
   </header>
 
   <main class="layout">
-    <section class="month" aria-labelledby="month-title">
-      <div class="month-head">
-        <h1 id="month-title" aria-live="polite"></h1>
-        <p class="month-summary" id="month-summary"></p>
-        <div class="month-nav">
-          <button type="button" class="ghost" id="prev" aria-label="Previous month">
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+    <section class="planner" aria-labelledby="period-title">
+      <div class="planner-head">
+        <div class="period">
+          <h1 id="period-title" aria-live="polite"></h1>
+          <p class="period-sub" id="period-sub"></p>
+        </div>
+        <div class="period-nav">
+          <button type="button" class="pill-btn" id="today">Today</button>
+          <button type="button" class="icon-btn" id="prev" aria-label="Previous">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
           </button>
-          <button type="button" class="ghost" id="today">Today</button>
-          <button type="button" class="ghost" id="next" aria-label="Next month">
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="m6 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+          <button type="button" class="icon-btn" id="next" aria-label="Next">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="m6 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
           </button>
         </div>
       </div>
 
-      <div class="grid" role="grid" aria-labelledby="month-title">
-        <div class="weekdays" role="row"></div>
+      <div class="statuses" role="group" aria-label="Show statuses" id="statuses"></div>
+
+      <div class="grid" role="grid" aria-labelledby="period-title" id="grid">
+        <div class="weekdays" role="row" id="weekdays"></div>
         <div class="days" id="days"></div>
       </div>
 
-      <ul class="legend" aria-label="Key">
-        <li><span class="dot dot-x"></span>X</li>
-        <li><span class="dot dot-linkedin"></span>LinkedIn</li>
-        <li><span class="dot dot-suggested"></span>Suggested, not yet approved</li>
-      </ul>
+      <p class="gaps" id="gaps"></p>
     </section>
 
-    <aside class="day" id="day" aria-live="polite"></aside>
+    <aside class="day" id="day" tabindex="-1" aria-live="polite"></aside>
   </main>
 
-  <template id="post-template">
-    <article class="post">
-      <header class="post-head">
-        <span class="platform"></span>
-        <time class="post-time"></time>
-        <span class="status"></span>
-      </header>
-      <p class="copy"></p>
-      <p class="tags"></p>
-      <div class="assets"></div>
-      <footer class="post-foot">
-        <span class="count"></span>
-        <button type="button" class="ghost copy-btn">Copy text</button>
-      </footer>
-    </article>
-  </template>
+  <dialog class="help" id="help" aria-labelledby="help-title">
+    <h2 id="help-title">Keyboard shortcuts</h2>
+    <dl>
+      <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Move between days</dd>
+      <dt><kbd>Page Up</kbd> <kbd>Page Down</kbd></dt><dd>Previous or next month or week</dd>
+      <dt><kbd>T</kbd></dt><dd>Jump to today</dd>
+      <dt><kbd>M</kbd> <kbd>W</kbd></dt><dd>Month or week view</dd>
+      <dt><kbd>?</kbd></dt><dd>Show this list</dd>
+    </dl>
+    <form method="dialog"><button class="pill-btn">Close</button></form>
+  </dialog>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-x" viewBox="0 0 24 24"><path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></symbol>
+    <symbol id="i-linkedin" viewBox="0 0 24 24"><path fill="currentColor" d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 1 1 0-4.125 2.062 2.062 0 0 1 0 4.125zM7.119 20.452H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></symbol>
+  </svg>
 
   <script type="module" src="src/app.js"></script>
 </body>
