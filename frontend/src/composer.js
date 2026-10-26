@@ -2,8 +2,22 @@
 // the database refuses writes from anyone else whatever the page shows.
 
 import { savePost, deletePost, TIME_ZONE } from "./data.js";
-import { configured } from "./supabase.js";
-import { prepareDrive, connectDrive, driveReady } from "./drive.js";
+import { configured, signInWithGoogle } from "./supabase.js";
+import { driveReady } from "./drive.js";
+
+// A post being written when the editor has to sign in again for Drive is kept here across the
+// trip to Google and reopened when they come back. Picked files can't be kept, only their text.
+const DRAFT_KEY = "composerDraft";
+
+export function takeStashedDraft() {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    sessionStorage.removeItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
 
 const PLATFORM_LIMITS = { x: 280, linkedin: 3000 };
 const STATUS_OPTIONS = [
@@ -60,15 +74,17 @@ function parseTags(text) {
 }
 
 // existing: a post to edit, or null for a new one. day: "YYYY-MM-DD" for a new post.
+// restore: a stashed draft ({ draft, removed }) to carry on with after signing in again.
 // preview(post) draws the platform preview; onSaved(post) and onDeleted(post) update the calendar.
-export function openComposer({ existing = null, day, preview, onSaved, onDeleted }) {
+export function openComposer({ existing = null, day, restore = null, preview, onSaved, onDeleted }) {
   const dialog = el("dialog", "composer");
   dialog.setAttribute("aria-labelledby", "composer-title");
 
-  const start = existing
-    ? { date: dayFmt.format(new Date(existing.scheduledAt)), time: timeFmt.format(new Date(existing.scheduledAt)) }
+  const base = restore?.draft ?? existing;
+  const start = base
+    ? { date: dayFmt.format(new Date(base.scheduledAt)), time: timeFmt.format(new Date(base.scheduledAt)) }
     : { date: day, time: "09:00" };
-  const removed = new Set();
+  const removed = new Set(restore?.removed ?? []);
   let files = [];
 
   const head = el("header", "composer-head");
@@ -80,8 +96,8 @@ export function openComposer({ existing = null, day, preview, onSaved, onDeleted
   head.append(title, close);
 
   const form = el("form", "composer-form");
-  const platform = segmented("Platform", [["x", "X"], ["linkedin", "LinkedIn"]], existing?.platform ?? "x");
-  const status = segmented("Status", STATUS_OPTIONS, existing?.status ?? "draft");
+  const platform = segmented("Platform", [["x", "X"], ["linkedin", "LinkedIn"]], base?.platform ?? "x");
+  const status = segmented("Status", STATUS_OPTIONS, base?.status ?? "draft");
 
   const date = el("input", "field");
   date.type = "date";
@@ -98,17 +114,17 @@ export function openComposer({ existing = null, day, preview, onSaved, onDeleted
   copy.rows = 7;
   copy.required = true;
   copy.placeholder = "Write the post";
-  copy.value = existing?.copy ?? "";
+  copy.value = base?.copy ?? "";
   const count = el("span", "cf-hint");
 
   const tags = el("input", "field");
   tags.placeholder = "VoiceAI, Datasets";
-  tags.value = (existing?.hashtags ?? []).join(", ");
+  tags.value = (base?.hashtags ?? []).join(", ");
 
   const liveUrl = el("input", "field");
   liveUrl.type = "url";
   liveUrl.placeholder = "https://x.com/SilencioNetwork/status/…";
-  liveUrl.value = existing?.externalUrl ?? "";
+  liveUrl.value = base?.externalUrl ?? "";
   const liveField = field("Live post link", liveUrl, el("span", "cf-hint", "Lets the stats link to it. Optional."));
 
   const assets = el("div", "cf-assets");
@@ -241,14 +257,21 @@ export function openComposer({ existing = null, day, preview, onSaved, onDeleted
       copy.focus();
       return;
     }
-    // Drive access is asked for first, in the click itself, so the browser lets its popup open.
-    const access = files.length && configured && !driveReady() ? connectDrive() : null;
+    // Google's Drive access from the last sign-in lasts an hour. When it has run out, the editor
+    // signs in again and comes back to this post.
+    if (files.length && configured && !driveReady()) {
+      const again = el("button", "link", "Sign in with Google again");
+      again.type = "button";
+      again.addEventListener("click", async () => {
+        try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ draft: d, removed: [...removed] })); } catch { /* the text is lost */ }
+        try { await signInWithGoogle(); } catch (err) { msg.textContent = `Sign-in failed: ${err.message}`; }
+      });
+      msg.replaceChildren("Uploading to Google Drive needs a fresh Google sign-in. ", again,
+        ". This post comes back after; add the photos and videos again.");
+      return;
+    }
     save.disabled = true;
     try {
-      if (access) {
-        msg.textContent = "Connecting Google Drive…";
-        await access;
-      }
       msg.textContent = files.length ? "Uploading to Drive and saving…" : "Saving…";
       const saved = await savePost(d, { files, removed: [...removed], existing });
       onSaved(saved);
@@ -267,7 +290,7 @@ export function openComposer({ existing = null, day, preview, onSaved, onDeleted
     dialog.remove();
   });
 
-  prepareDrive();
+  if (restore) msg.textContent = "Signed in again. Add the photos and videos, then save.";
   document.body.append(dialog);
   refresh();
   dialog.showModal();
