@@ -3,7 +3,7 @@
 
 import { savePost, deletePost, TIME_ZONE } from "./data.js";
 import { configured, signInWithGoogle } from "./supabase.js";
-import { driveReady } from "./drive.js";
+import { driveAccess, DriveAccessError } from "./drive.js";
 
 // A post being written when the editor has to sign in again for Drive is kept here across the
 // trip to Google and reopened when they come back. Picked files can't be kept, only their text.
@@ -257,30 +257,32 @@ export function openComposer({ existing = null, day, restore = null, preview, on
       copy.focus();
       return;
     }
-    // Google's Drive access from the last sign-in lasts an hour. When it has run out, the editor
-    // signs in again and comes back to this post.
-    if (files.length && configured && !driveReady()) {
-      const again = el("button", "link", "Sign in with Google again");
-      again.type = "button";
-      again.addEventListener("click", async () => {
-        try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ draft: d, removed: [...removed] })); } catch { /* the text is lost */ }
-        try { await signInWithGoogle(); } catch (err) { msg.textContent = `Sign-in failed: ${err.message}`; }
-      });
-      msg.replaceChildren("Uploading to Google Drive needs a fresh Google sign-in. ", again,
-        ". This post comes back after; add the photos and videos again.");
-      return;
-    }
     save.disabled = true;
     try {
+      // Google's Drive access comes with a sign-in and lasts an hour. Without it the editor signs
+      // in again and comes back to this post.
+      if (files.length && configured && !(await driveAccess())) throw new DriveAccessError();
       msg.textContent = files.length ? "Uploading to Drive and saving…" : "Saving…";
       const saved = await savePost(d, { files, removed: [...removed], existing });
       onSaved(saved);
       dialog.close();
     } catch (err) {
-      msg.textContent = `Couldn't save: ${err.message}`;
       save.disabled = false;
+      if (err instanceof DriveAccessError) askForSignIn(d);
+      else msg.textContent = `Couldn't save: ${err.message}`;
     }
   });
+
+  function askForSignIn(d) {
+    const again = el("button", "link", "Sign in with Google again");
+    again.type = "button";
+    again.addEventListener("click", async () => {
+      try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ draft: d, removed: [...removed] })); } catch { /* the text is lost */ }
+      try { await signInWithGoogle(); } catch (err) { msg.textContent = `Sign-in failed: ${err.message}`; }
+    });
+    msg.replaceChildren("Uploading needs Google Drive access. ", again,
+      " and allow Drive when Google asks (tick its box if it shows one). This post comes back after; add the photos and videos again.");
+  }
 
   const dismiss = () => dialog.close();
   close.addEventListener("click", dismiss);
@@ -290,7 +292,10 @@ export function openComposer({ existing = null, day, restore = null, preview, on
     dialog.remove();
   });
 
-  if (restore) msg.textContent = "Signed in again. Add the photos and videos, then save.";
+  if (restore) {
+    msg.textContent = "Signed in again. Add the photos and videos, then save.";
+    driveAccess().then((ok) => { if (!ok) askForSignIn(draft()); });
+  }
   document.body.append(dialog);
   refresh();
   dialog.showModal();

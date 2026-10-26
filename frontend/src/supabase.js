@@ -32,7 +32,8 @@ export async function signInWithGoogle() {
       // Lets the calendar put photos and videos in the editor's Drive (see drive.js).
       scopes: DRIVE_SCOPE,
       // Pre-selects the editor account in Google's picker; it does not grant anything by itself.
-      queryParams: { login_hint: EDITOR_EMAIL, prompt: "select_account", include_granted_scopes: "true" },
+      // "consent" makes Google show the Drive permission even to someone who signed in before it.
+      queryParams: { login_hint: EDITOR_EMAIL, prompt: "select_account consent", include_granted_scopes: "true" },
     },
   });
   if (error) throw error;
