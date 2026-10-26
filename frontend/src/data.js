@@ -28,8 +28,8 @@ export const TIME_ZONE_LABEL = "Manila, GMT+8";
 // The account each platform preview is drawn as. badge: on X "gold" (verified organisation),
 // "blue" or "grey"; on LinkedIn "verified". null when the account has none.
 export const ACCOUNTS = {
-  x: { name: "Silencio", handle: "@SilencioNetwork", badge: null },
-  linkedin: { name: "Silencio AI", handle: "Company page", badge: null },
+  x: { name: "Silencio | Voice Data for AI", handle: "@silencioNetwork", badge: "gold" },
+  linkedin: { name: "Silencio Voice AI", handle: "7,781 followers", badge: null },
 };
 
 export async function loadPosts() {
