@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Content calendar · Silencio</title>
+  <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="src/styles.css">
+</head>
+<body>
+  <a class="skip" href="#grid">Skip to the calendar</a>
+
+  <header class="bar">
+    <a class="brand" href="./" aria-label="Silencio content calendar">
+      <img class="brand-logo" src="assets/logo.svg" alt="silencio" width="102" height="24">
+      <span class="brand-scope">Content calendar</span>
+    </a>
+    <div class="bar-controls">
+      <div class="segmented" role="radiogroup" aria-label="View">
+        <button type="button" role="radio" data-view="month" aria-checked="true">Month</button>
+        <button type="button" role="radio" data-view="week" aria-checked="false">Week</button>
+      </div>
+      <div class="segmented" role="radiogroup" aria-label="Platform">
+        <button type="button" role="radio" data-platform="all" aria-checked="true">All</button>
+        <button type="button" role="radio" data-platform="x" aria-checked="false" aria-label="X">
+          <svg class="pf" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x"/></svg>
+        </button>
+        <button type="button" role="radio" data-platform="linkedin" aria-checked="false" aria-label="LinkedIn">
+          <svg class="pf" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-linkedin"/></svg>
+        </button>
+      </div>
+      <button type="button" class="icon-btn" id="help-open" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
+    </div>
+  </header>
+
+  <main class="page">
+    <div class="head">
+      <div>
+        <h1 id="period-title" aria-live="polite"></h1>
+        <p class="sub" id="period-sub"></p>
+      </div>
+      <div class="nav">
+        <button type="button" class="icon-btn" id="prev" aria-label="Previous">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+        </button>
+        <button type="button" class="pill primary" id="today">Today</button>
+        <button type="button" class="pill primary" id="new-post" hidden>New post</button>
+        <button type="button" class="icon-btn" id="next" aria-label="Next">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="m6 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="filters" role="group" aria-label="Show statuses" id="statuses"></div>
+
+    <div class="grid" role="grid" aria-labelledby="period-title" id="grid">
+      <div class="weekdays" role="row" id="weekdays"></div>
+      <div id="weeks"></div>
+    </div>
+
+    <p class="gaps" id="gaps"></p>
+
+    <footer class="account" id="account"></footer>
+  </main>
+
+  <dialog class="help" id="help" aria-labelledby="help-title">
+    <h2 id="help-title">Keyboard shortcuts</h2>
+    <dl>
+      <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Move between days</dd>
+      <dt><kbd>Enter</kbd></dt><dd>Open or close the day</dd>
+      <dt><kbd>Esc</kbd></dt><dd>Close the day</dd>
+      <dt><kbd>Page Up</kbd> <kbd>Page Down</kbd></dt><dd>Previous or next month or week</dd>
+      <dt><kbd>T</kbd></dt><dd>Jump to today</dd>
+      <dt><kbd>M</kbd> <kbd>W</kbd></dt><dd>Month or week view</dd>
+      <dt><kbd>N</kbd></dt><dd>New post (editor)</dd>
+    </dl>
+    <form method="dialog"><button class="pill">Close</button></form>
+  </dialog>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-x" viewBox="0 0 24 24"><path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></symbol>
+    <symbol id="i-linkedin" viewBox="0 0 24 24"><path fill="currentColor" d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 1 1 0-4.125 2.062 2.062 0 0 1 0 4.125zM7.119 20.452H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></symbol>
+  </svg>
+
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
