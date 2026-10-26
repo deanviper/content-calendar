@@ -331,7 +331,13 @@ textarea.field { padding: 10px 14px; resize: vertical; }
 .pv-li .pv-avatar { border-radius: 8px; }
 .pv-who { display: flex; flex-direction: column; line-height: 1.25; }
 .pv-x .pv-who { flex-direction: row; gap: 6px; align-items: baseline; }
-.pv-name { font-weight: 600; font-size: 14px; }
+.pv-name { display: inline-flex; align-items: center; gap: 3px; font-weight: 600; font-size: 14px; }
+/* Platform colours, as the platforms show them. */
+.pv-badge { width: 16px; height: 16px; flex: none; }
+.pv-badge.b-gold { color: #e2b719; }
+.pv-badge.b-blue { color: #1d9bf0; }
+.pv-badge.b-grey { color: #829aab; }
+.pv-badge.b-verified { color: #71717a; }
 .pv-handle { color: var(--ink-3); font-size: 13px; }
 
 .pv-text {

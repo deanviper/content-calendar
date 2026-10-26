@@ -241,12 +241,13 @@ export function openComposer({ existing = null, day, preview, onSaved, onDeleted
       copy.focus();
       return;
     }
+    // Drive access is asked for first, in the click itself, so the browser lets its popup open.
+    const access = files.length && configured && !driveReady() ? connectDrive() : null;
     save.disabled = true;
     try {
-      // Drive access is asked for here, straight from the click, so the popup isn't blocked.
-      if (files.length && configured && !driveReady()) {
+      if (access) {
         msg.textContent = "Connecting Google Drive…";
-        await connectDrive();
+        await access;
       }
       msg.textContent = files.length ? "Uploading to Drive and saving…" : "Saving…";
       const saved = await savePost(d, { files, removed: [...removed], existing });
