@@ -14,6 +14,7 @@ export async function db() {
 }
 
 // Resolves once someone is signed in. Until then the page shows an email sign-in link form.
+// Only the stats page asks for this; the calendar is open to anyone with the link.
 export async function signedIn() {
   const supabase = await db();
   const { data } = await supabase.auth.getSession();
@@ -36,7 +37,7 @@ function signInScreen(supabase) {
     <form class="signin-card">
       <img src="${new URL("../assets/logo.svg", import.meta.url)}" alt="silencio" height="24">
       <h1>Sign in</h1>
-      <p>We'll email you a link. Only members of the Silencio team can see the calendar.</p>
+      <p>We'll email you a link. Stats are for Silencio editors only.</p>
       <label for="signin-email">Work email</label>
       <input id="signin-email" type="email" autocomplete="email" required>
       <button class="pill-btn primary" type="submit">Email me a sign-in link</button>
