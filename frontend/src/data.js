@@ -23,8 +23,8 @@ export const TIME_ZONE_LABEL = "Manila, GMT+8";
 
 // The account each platform preview is drawn as.
 export const ACCOUNTS = {
-  x: { name: "Silencio", handle: "@silencioNetwork" },
-  linkedin: { name: "Silencio", handle: "Company page" },
+  x: { name: "Silencio", handle: "@SilencioNetwork" },
+  linkedin: { name: "Silencio AI", handle: "Company page" },
 };
 
 export async function loadPosts() {
@@ -84,29 +84,29 @@ const asset = (file, name, alt) => ({ type: "image", url: `assets/${file}`, name
 
 // [day offset from today, platform, status, "HH:MM" Manila time, copy, hashtags, assets]
 const SAMPLE = [
-  [-9, "x", "scheduled", "09:00", "Your phone is a noise sensor. 460,000 of them now map sound in 180+ countries.", ["DePIN"], []],
-  [-9, "linkedin", "scheduled", "10:30", "Noise is the pollution nobody sees.\n\nCities plan around air quality and traffic, but sound data is patchy and years old. Silencio turns everyday phones into a live noise map, so planners, venues and researchers can see what a street actually sounds like today.", ["UrbanPlanning", "OpenData"], [asset("noise-map.svg", "noise-map.svg", "Dark map with glowing points where noise is highest")]],
-  [-6, "x", "scheduled", "18:00", "Measured a quiet café this week? Drop the dB reading below. We're collecting the calmest spots in Manila.", ["Silencio"], []],
-  [-3, "linkedin", "scheduled", "08:30", "What does a city sound like, hour by hour?\n\nWe plotted one day of readings from a single neighbourhood. The peak is not rush hour.", ["Acoustics", "SmartCities"], [asset("decibel-bars.svg", "decibel-bars.svg", "Bar chart of noise level per hour across one day")]],
-  [-3, "x", "scheduled", "12:00", "The loudest hour in the neighbourhood we measured was 21:00, not 08:00. Thread on why.", [], [asset("decibel-bars.svg", "decibel-bars.svg", "Bar chart of noise level per hour across one day")]],
-  [0, "x", "scheduled", "09:00", "Monday check-in: open the app, record 15 seconds of wherever you are, and earn $SLC for it.", ["Silencio", "DePIN"], []],
-  [0, "linkedin", "scheduled", "11:00", "Quiet is a public good. Measure it.\n\nThis week we're sharing how hospitality teams use venue noise profiles to pick locations and set expectations for guests.", ["Hospitality", "Data"], [asset("quote-card.svg", "quote-card.svg", "Black card reading: Quiet is a public good. Measure it.")]],
-  [0, "x", "suggested", "19:30", "Name the loudest street you walk every day. We'll check the data.", [], []],
-  [2, "x", "suggested", "10:00", "Noise exposure above 55 dB at night is linked to poorer sleep and higher stress. How loud is your bedroom? Record it tonight and find out.", ["Health"], []],
-  [3, "linkedin", "scheduled", "09:00", "Street-level noise data, without new hardware.\n\nCity teams and research groups: tell us which neighbourhoods you need covered and we'll share what the network already has there.", ["SmartCities"], []],
-  [5, "x", "scheduled", "17:00", "Weekend challenge: record the quietest place you can find. Top 10 quietest readings get a shout-out on Monday.", ["Silencio"], [asset("noise-map.svg", "noise-map.svg", "Dark map with glowing points where noise is highest")]],
-  [8, "linkedin", "suggested", "10:00", "Three things we learned from a million noise readings:\n\n1. Weekends are louder than weekdays in most cities.\n2. Parks are not as quiet as people think.\n3. Night noise varies more than day noise.", ["Research", "OpenData"], []],
-  [8, "x", "suggested", "13:00", "A million noise readings later, the surprise: parks are not as quiet as people think. Our full breakdown goes live this week, so tell us which city you want covered next and we'll add it to the report before it ships.", [], []],
-  [12, "x", "scheduled", "09:00", "New in the app: venue noise profiles. Check how loud a restaurant gets before you book.", ["ProductUpdate"], [asset("quote-card.svg", "quote-card.svg", "Black card reading: Quiet is a public good. Measure it.")]],
-  [12, "linkedin", "scheduled", "09:30", "Venue noise profiles are live.\n\nFor venue owners: see how your space compares to the street and to similar venues nearby, and share a verified quiet score with guests.", ["Hospitality", "ProductUpdate"], [asset("quote-card.svg", "quote-card.svg", "Black card reading: Quiet is a public good. Measure it.")]],
-  [16, "x", "draft", "18:00", "What should we measure next: classrooms, hospitals or offices?", [], []],
-  [19, "linkedin", "draft", "08:00", "Month in review: new countries, new sensors, and what the data says about city nights.", ["Update"], []],
-  [22, "x", "scheduled", "12:00", "Community call this Thursday. Bring questions about rewards, the app and the roadmap.", ["Silencio"], []],
+  [-9, "x", "scheduled", "09:00", "Voice AI reaches fewer than 3% of the world's 7,000 languages. The other 3.7 billion people don't exist as training data yet.", ["VoiceAI"], [asset("coverage.svg", "coverage.svg", "100 squares with 3 lit: voice AI reaches fewer than 3% of the world's languages")]],
+  [-9, "linkedin", "scheduled", "10:30", "AI should understand everyone.\n\nMost speech models are trained on a handful of languages scraped from the open web. Silencio builds the other side of that: consent-cleared voice data recorded by real people, in their own language and their own environment, across 180+ countries.", ["VoiceAI", "SpeechRecognition"], [asset("voice-wave.svg", "voice-wave.svg", "Waveform beside the line: AI should understand everyone.")]],
+  [-6, "x", "scheduled", "18:00", "Not scraped. Not synthetic. Real human voice, with consent captured on-chain.", ["Silencio"], []],
+  [-3, "linkedin", "scheduled", "08:30", "Why do voice agents still fail in Manila, Lagos or Lima?\n\nAccents, code-switching and real background noise are missing from public datasets. We collect them on purpose, then transcribe with native speakers.", ["VoiceAgents", "ASR"], []],
+  [-3, "x", "scheduled", "12:00", "Code-switching is how most of the world talks. Taglish, Spanglish, Hinglish. Your ASR should hear it too.", [], []],
+  [0, "x", "scheduled", "09:00", "Monday drop: new off-the-shelf datasets for Southeast Asian languages, licensed and ready to integrate in days.", ["VoiceAI", "Datasets"], []],
+  [0, "linkedin", "scheduled", "11:00", "2.5 million people, paid to be heard.\n\nEvery Silencio dataset starts with a real person on a real device. Consent captured on-chain, anonymous in the dataset, paid in stablecoin. They are the reason voice AI can reach 180 countries.", ["VoiceAI", "Data"], [asset("contributors.svg", "contributors.svg", "2.5M people, paid to be heard. 180+ countries, 1,000+ languages and dialects")]],
+  [0, "x", "suggested", "19:30", "Which language should voice AI learn next? Reply with the one your grandparents speak.", [], []],
+  [2, "x", "suggested", "10:00", "Training a voice agent? The test isn't the lab. It's a market stall, a moving jeepney, a kitchen with the radio on. Collect for that.", ["VoiceAgents"], []],
+  [3, "linkedin", "scheduled", "09:00", "Procurement-ready voice data.\n\nIP-clean provenance from contributor to dataset, aligned with the EU AI Act and GDPR. The data we ship is the data your legal team will sign for.", ["AIGovernance", "Data"], []],
+  [5, "x", "scheduled", "17:00", "Weekend: record 5 minutes in your own language with the Silencio app and get paid for it. 1,000+ languages and dialects so far.", ["Silencio"], [asset("voice-wave.svg", "voice-wave.svg", "Waveform beside the line: AI should understand everyone.")]],
+  [8, "linkedin", "suggested", "10:00", "Three things we learned collecting voice data in 180+ countries:\n\n1. Accent matters more than language for ASR error rates.\n2. Real environments beat studio audio for agents.\n3. Native-speaker transcription catches what machines miss.", ["SpeechRecognition", "Research"], []],
+  [8, "x", "suggested", "13:00", "Machine transcription still fails on the languages that need it most. That's why every Silencio dataset gets native-speaker transcription with multi-stage QA, including code-switching. Tell us which language your model struggles with and we'll show you a sample.", [], []],
+  [12, "x", "scheduled", "09:00", "Custom collection: tell us the language, accent, environment and hours you need. The network delivers.", ["VoiceAI"], [asset("coverage.svg", "coverage.svg", "100 squares with 3 lit: voice AI reaches fewer than 3% of the world's languages")]],
+  [12, "linkedin", "scheduled", "09:30", "On-demand voice data collection is live for teams building voice agents, speech translation and TTS.\n\nSpecify language, region, speaker mix and acoustic conditions. We source it from 2.5M contributors and deliver in the format your team already uses.", ["VoiceAgents", "TTS"], [asset("coverage.svg", "coverage.svg", "100 squares with 3 lit: voice AI reaches fewer than 3% of the world's languages")]],
+  [16, "x", "draft", "18:00", "What should we collect next: Tagalog call-centre audio, Yoruba market speech, or Quechua storytelling?", [], []],
+  [19, "linkedin", "draft", "08:00", "Month in review: new languages added, hours delivered, and what frontier labs asked us for.", ["Update"], []],
+  [22, "x", "scheduled", "12:00", "Community call this Thursday for contributors: payouts, new recording tasks and the languages we need most.", ["Silencio"], []],
 ];
 
 const SAMPLE_COMMENTS = {
-  6: [{ id: "c1", authorName: "Anton", body: "Love the line. Can we add the venue count?", createdAt: "2026-10-25T09:12:00+08:00" }],
-  7: [{ id: "c2", authorName: "Mia", body: "Maybe end with a question to get replies?", createdAt: "2026-10-25T14:40:00+08:00" }],
+  6: [{ id: "c1", authorName: "Anton", body: "Strong. Can we add the 1,000+ languages line?", createdAt: "2026-10-25T09:12:00+08:00" }],
+  7: [{ id: "c2", authorName: "Mia", body: "Love this one. Maybe pin it?", createdAt: "2026-10-25T14:40:00+08:00" }],
 };
 
 function samplePosts(now) {

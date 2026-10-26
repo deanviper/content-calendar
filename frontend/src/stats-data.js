@@ -73,18 +73,18 @@ function rng(seed) {
 
 const SAMPLE_COPY = {
   x: [
-    "Your phone is a noise sensor. Record 15 seconds and earn $SLC.",
-    "The loudest hour in the neighbourhood we measured was 21:00, not 08:00.",
-    "Weekend challenge: record the quietest place you can find.",
-    "Name the loudest street you walk every day. We'll check the data.",
-    "New in the app: venue noise profiles.",
-    "Noise above 55 dB at night is linked to poorer sleep.",
+    "Voice AI reaches fewer than 3% of the world's 7,000 languages.",
+    "Not scraped. Not synthetic. Real human voice, with consent on-chain.",
+    "Code-switching is how most of the world talks. Your ASR should hear it too.",
+    "Which language should voice AI learn next?",
+    "New off-the-shelf datasets for Southeast Asian languages.",
+    "Record 5 minutes in your own language and get paid for it.",
   ],
   linkedin: [
-    "Noise is the pollution nobody sees. Here's how cities can measure it.",
-    "What does a city sound like, hour by hour?",
-    "Venue noise profiles are live for hospitality teams.",
-    "Three things we learned from a million noise readings.",
+    "AI should understand everyone.",
+    "Why do voice agents still fail in Manila, Lagos or Lima?",
+    "2.5 million people, paid to be heard.",
+    "Procurement-ready voice data, aligned with the EU AI Act.",
   ],
 };
 
@@ -166,7 +166,7 @@ function sampleStats(now) {
     followers,
     markers: [
       { id: "m1", label: "Baseline", markedAt: new Date(start.getTime() + 0.5 * dayMs).toISOString(), platform: null, note: "First day of tracking" },
-      { id: "m2", label: "Venue profiles launch", markedAt: launch.toISOString(), platform: null, note: null },
+      { id: "m2", label: "On-demand collection launch", markedAt: launch.toISOString(), platform: null, note: null },
     ],
   };
 }
