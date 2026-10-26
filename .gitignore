@@ -1,3 +1,9 @@
 .DS_Store
 node_modules/
 .taste-skill/
+# Secrets and local tool state never belong in the repo.
+.env
+.env.*
+.vercel/
+supabase/.temp/
+supabase/.branches/
