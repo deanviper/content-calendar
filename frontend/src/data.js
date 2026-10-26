@@ -4,7 +4,7 @@
 //   {
 //     id: string,
 //     platform: "x" | "linkedin",
-//     status: "draft" | "suggested" | "scheduled" | "published",
+//     status: "draft" | "published",   // published: found live on the platform
 //     scheduledAt: ISO 8601 string with offset, e.g. "2026-10-28T09:00:00+08:00",
 //     copy: string,            // line breaks are kept
 //     hashtags: string[],      // without the "#"
@@ -55,7 +55,8 @@ export async function loadPosts() {
   return data.map((p) => ({
     id: p.id,
     platform: p.platform,
-    status: p.status,
+    // Only two states show: posted once the collector found it live, otherwise a draft.
+    status: p.status === "published" ? "published" : "draft",
     scheduledAt: p.scheduled_at,
     copy: p.copy,
     hashtags: p.hashtags ?? [],
@@ -132,8 +133,7 @@ export async function savePost(post, { files = [], removed = [], existing = null
     scheduled_at: post.scheduledAt,
     copy: post.copy,
     hashtags: post.hashtags,
-    external_url: post.externalUrl || null,
-    published_at: post.status === "published" ? post.scheduledAt : null,
+    // external_url and published_at are the collector's to set when it finds the live post.
   };
   const query = post.id
     ? supabase.from("posts").update(row).eq("id", post.id)
@@ -219,7 +219,7 @@ function samplePosts(now) {
       id: `sample-${i + 1}`,
       platform,
       // Sample posts in the past have gone out; a real backend reports this itself.
-      status: offset < 0 && status === "scheduled" ? "published" : status,
+      status: offset < 0 && status === "scheduled" ? "published" : "draft",
       scheduledAt: `${date}T${time}:00+08:00`,
       copy,
       hashtags,
