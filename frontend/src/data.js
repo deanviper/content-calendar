@@ -25,10 +25,11 @@ import { uploadToDrive, trashInDrive, driveId, drive } from "./drive.js";
 export const TIME_ZONE = "Asia/Manila";
 export const TIME_ZONE_LABEL = "Manila, GMT+8";
 
-// The account each platform preview is drawn as.
+// The account each platform preview is drawn as. badge: on X "gold" (verified organisation),
+// "blue" or "grey"; on LinkedIn "verified". null when the account has none.
 export const ACCOUNTS = {
-  x: { name: "Silencio", handle: "@SilencioNetwork" },
-  linkedin: { name: "Silencio AI", handle: "Company page" },
+  x: { name: "Silencio", handle: "@SilencioNetwork", badge: null },
+  linkedin: { name: "Silencio AI", handle: "Company page", badge: null },
 };
 
 export async function loadPosts() {
@@ -225,10 +226,24 @@ function samplePosts(now) {
   });
 }
 
-// The calendar's notion of "today" is Manila's date, whatever the viewer's clock says.
-export function manilaDate(date) {
+// Posts are planned in Manila time. Viewers can read the calendar in their own time zone instead.
+export const VIEWER_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || TIME_ZONE;
+
+// "London, GMT+1" for a time zone id, with the offset it has today.
+export function zoneLabel(zone) {
+  if (zone === TIME_ZONE) return TIME_ZONE_LABEL;
+  const city = zone.split("/").pop().replace(/_/g, " ");
+  const offset = new Intl.DateTimeFormat("en-GB", { timeZone: zone, timeZoneName: "shortOffset" })
+    .formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value ?? "";
+  return offset ? `${city}, ${offset}` : city;
+}
+
+export const manilaDate = (date) => dateIn(date, TIME_ZONE);
+
+// The date of a moment in a time zone, as { y, m (0-based), d }.
+export function dateIn(date, zone) {
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit",
+    timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit",
   }).formatToParts(date);
   const get = (t) => Number(parts.find((p) => p.type === t).value);
   return { y: get("year"), m: get("month") - 1, d: get("day") };
