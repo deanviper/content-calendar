@@ -1,4 +1,5 @@
 import { SUPABASE_URL, SUPABASE_ANON_KEY, EDITOR_EMAIL } from "./config.js";
+import { DRIVE_SCOPE, rememberDriveToken, forgetDriveToken } from "./drive.js";
 
 export const configured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
@@ -9,6 +10,12 @@ export async function db() {
   if (!client) {
     const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm");
     client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // Google's token arrives only with the sign-in itself; Supabase drops it when the session
+    // refreshes, so it is kept for the Drive uploads here.
+    client.auth.onAuthStateChange((event, session) => {
+      if (session?.provider_token) rememberDriveToken(session.provider_token);
+      if (event === "SIGNED_OUT") forgetDriveToken();
+    });
   }
   return client;
 }
@@ -22,8 +29,10 @@ export async function signInWithGoogle() {
     provider: "google",
     options: {
       redirectTo: location.href,
+      // Lets the calendar put photos and videos in the editor's Drive (see drive.js).
+      scopes: DRIVE_SCOPE,
       // Pre-selects the editor account in Google's picker; it does not grant anything by itself.
-      queryParams: { login_hint: EDITOR_EMAIL, prompt: "select_account" },
+      queryParams: { login_hint: EDITOR_EMAIL, prompt: "select_account", include_granted_scopes: "true" },
     },
   });
   if (error) throw error;

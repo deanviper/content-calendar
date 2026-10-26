@@ -2,81 +2,39 @@
 // creates there. Each file is shared as "anyone with the link can view" so the calendar can show
 // it to people who aren't signed in. The database keeps only the file's Drive link.
 //
-// Access uses Google's token client with the drive.file scope: the calendar can see and change
-// only the files and folder it created, nothing else in the Drive.
+// Drive access comes with the editor's Google sign-in: Supabase asks Google for the drive.file
+// scope, so the calendar can see and change only the files and folder it created, nothing else
+// in the Drive. Google's access token lasts an hour; after that the editor signs in again, which
+// is a normal page redirect rather than a popup a browser might block.
 
-import { GOOGLE_CLIENT_ID, EDITOR_EMAIL } from "./config.js";
-
-const SCOPE = "https://www.googleapis.com/auth/drive.file";
+export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const FOLDER_NAME = "Silencio content calendar";
 const FOLDER_TAG = { key: "silencioCalendar", value: "assets" };
 const API = "https://www.googleapis.com/drive/v3";
+const KEY = "driveToken";
 
-let token = null; // { value, expires }
-let gis = null;
-let client = null;  // Google's token client, made once the script has loaded
-let pending = null; // { resolve, reject } for the access request in progress
 let folderId = null;
 
-function loadGis() {
-  gis ??= new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = "https://accounts.google.com/gsi/client";
-    s.onload = () => resolve(window.google.accounts.oauth2);
-    s.onerror = () => { gis = null; reject(new Error("Couldn't load Google sign-in.")); };
-    document.head.append(s);
-  });
-  return gis;
+function token() {
+  try { return JSON.parse(sessionStorage.getItem(KEY)); } catch { return null; }
 }
 
-const settle = (fn, value) => {
-  const p = pending;
-  pending = null;
-  p?.[fn](value);
-};
-
-// Loads Google's script and sets up the token client ahead of time, when the composer opens.
-// The access popup then opens in the same moment as the click that asks for it; a popup opened
-// after any waiting is blocked by the browser ("Failed to open popup window").
-export function prepareDrive() {
-  if (!GOOGLE_CLIENT_ID || client) return;
-  loadGis().then((oauth2) => {
-    client ??= oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: SCOPE,
-      login_hint: EDITOR_EMAIL,
-      hd: EDITOR_EMAIL.split("@")[1],
-      callback: (r) => {
-        if (r.error) return settle("reject", new Error(`Google Drive: ${r.error_description ?? r.error}`));
-        token = { value: r.access_token, expires: Date.now() + Number(r.expires_in) * 1000 };
-        settle("resolve");
-      },
-      error_callback: (e) => settle("reject", new Error(
-        e.type === "popup_closed" ? "Drive access was cancelled."
-          : e.type === "popup_failed_to_open" ? "Your browser blocked Google's window. Allow pop-ups for this site and save again."
-            : `Google Drive: ${e.message ?? e.type}`)),
-    });
-  }).catch(() => {});
+// Called with Google's token when a sign-in comes back from Google.
+export function rememberDriveToken(value) {
+  try { sessionStorage.setItem(KEY, JSON.stringify({ value, expires: Date.now() + 55 * 60_000 })); } catch { /* none kept */ }
 }
 
-export const driveReady = () => Boolean(token && token.expires > Date.now() + 60_000);
-
-// Asks for Drive access. Call it directly in a click handler, before anything is awaited.
-export function connectDrive() {
-  if (driveReady()) return Promise.resolve();
-  if (!client) {
-    prepareDrive();
-    return Promise.reject(new Error("Google Drive is still loading. Save again in a moment."));
-  }
-  const request = new Promise((resolve, reject) => { pending = { resolve, reject }; });
-  client.requestAccessToken({ prompt: "" });
-  return request;
+export function forgetDriveToken() {
+  try { sessionStorage.removeItem(KEY); } catch { /* nothing to forget */ }
 }
+
+export const driveReady = () => Boolean(token()?.expires > Date.now() + 60_000);
 
 async function call(url, init = {}) {
-  if (!driveReady()) throw new Error("Connect Google Drive first.");
-  const res = await fetch(url, { ...init, headers: { Authorization: `Bearer ${token.value}`, ...init.headers } });
+  if (!driveReady()) throw new Error("Google Drive access has run out. Sign in again to upload.");
+  const res = await fetch(url, { ...init, headers: { Authorization: `Bearer ${token().value}`, ...init.headers } });
   if (!res.ok) {
+    if (res.status === 401) forgetDriveToken();
     let msg = `${res.status}`;
     try { msg = (await res.json()).error?.message ?? msg; } catch { /* keep the status */ }
     throw new Error(`Google Drive: ${msg}`);

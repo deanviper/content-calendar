@@ -7,6 +7,3 @@ export const SUPABASE_ANON_KEY = "sb_publishable_m-WlGWOvKs42liOCiM782Q_Nv_gY8kQ
 // Shown as the suggested account on Google's sign-in screen. Who can edit is decided by the
 // public.editors table, not by this value.
 export const EDITOR_EMAIL = "joaquin@silencio.network";
-
-// The Google OAuth client the calendar uses for Drive uploads (the same one Supabase signs in with).
-export const GOOGLE_CLIENT_ID = "483579615338-h1pkoge220mclr3v01p3kbf6d7femrta.apps.googleusercontent.com";
