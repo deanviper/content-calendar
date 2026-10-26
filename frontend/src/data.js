@@ -121,6 +121,10 @@ export async function savePost(post, { files = [], removed = [], existing = null
     return { ...existing, ...post, id: post.id ?? sampleId(), assets: [...keptAssets, ...added], comments: existing?.comments ?? [] };
   }
 
+  // Files go to Drive first, so a failed upload leaves no half-saved post behind.
+  const uploaded = [];
+  for (const file of files) uploaded.push({ file, url: await uploadToDrive(file) });
+
   const supabase = await db();
   const row = {
     platform: post.platform,
@@ -149,8 +153,7 @@ export async function savePost(post, { files = [], removed = [], existing = null
 
   const added = [];
   let position = keptAssets.length;
-  for (const file of files) {
-    const url = await uploadToDrive(file);
+  for (const { file, url } of uploaded) {
     const row = { post_id: id, type: assetType(file), url, name: file.name, position: position++ };
     const { data: a, error: e } = await supabase.from("post_assets").insert(row).select("id").single();
     if (e) throw new Error(e.message);
