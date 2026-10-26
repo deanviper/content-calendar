@@ -74,7 +74,7 @@ SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/import-stats.mjs pas
 
 Until the calendar has its own composer, add posts in the dashboard: Table Editor → `posts` →
 Insert row (`platform`, `status`, `scheduled_at` with `+08:00`, `copy`, `hashtags` like
-`{DePIN,Silencio}`). For images, upload to Storage → `post-assets` and add a `post_assets` row with
+`{VoiceAI,Silencio}`). For images, upload to Storage → `post-assets` and add a `post_assets` row with
 the post's `id`, the file's `storage_path` and a `name`. A CSV of drafts can be imported into
 `posts` from the Table Editor too.
 

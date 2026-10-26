@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="src/styles.css">
 </head>
 <body>
-  <a class="skip" href="#day">Skip to the selected day</a>
+  <a class="skip" href="#grid">Skip to the calendar</a>
 
   <header class="bar">
     <a class="brand" href="./" aria-label="Silencio content calendar">
@@ -23,7 +23,7 @@
         <button type="button" role="radio" data-view="month" aria-checked="true">Month</button>
         <button type="button" role="radio" data-view="week" aria-checked="false">Week</button>
       </div>
-      <div class="segmented" role="radiogroup" aria-label="Platform" id="platforms">
+      <div class="segmented" role="radiogroup" aria-label="Platform">
         <button type="button" role="radio" data-platform="all" aria-checked="true">All</button>
         <button type="button" role="radio" data-platform="x" aria-checked="false" aria-label="X">
           <svg class="pf" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x"/></svg>
@@ -36,47 +36,44 @@
     </div>
   </header>
 
-  <main class="layout">
-    <section class="planner" aria-labelledby="period-title">
-      <div class="planner-head">
-        <div class="period">
-          <h1 id="period-title" aria-live="polite"></h1>
-          <p class="period-sub" id="period-sub"></p>
-        </div>
-        <div class="period-nav">
-          <button type="button" class="pill-btn" id="today">Today</button>
-          <button type="button" class="icon-btn" id="prev" aria-label="Previous">
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
-          </button>
-          <button type="button" class="icon-btn" id="next" aria-label="Next">
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="m6 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
-          </button>
-        </div>
+  <main class="page">
+    <div class="head">
+      <div>
+        <h1 id="period-title" aria-live="polite"></h1>
+        <p class="sub" id="period-sub"></p>
       </div>
-
-      <div class="statuses" role="group" aria-label="Show statuses" id="statuses"></div>
-
-      <div class="grid" role="grid" aria-labelledby="period-title" id="grid">
-        <div class="weekdays" role="row" id="weekdays"></div>
-        <div class="days" id="days"></div>
+      <div class="nav">
+        <button type="button" class="icon-btn" id="prev" aria-label="Previous">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+        </button>
+        <button type="button" class="pill primary" id="today">Today</button>
+        <button type="button" class="icon-btn" id="next" aria-label="Next">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="m6 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+        </button>
       </div>
+    </div>
 
-      <p class="gaps" id="gaps"></p>
-    </section>
+    <div class="filters" role="group" aria-label="Show statuses" id="statuses"></div>
 
-    <aside class="day" id="day" tabindex="-1" aria-live="polite"></aside>
+    <div class="grid" role="grid" aria-labelledby="period-title" id="grid">
+      <div class="weekdays" role="row" id="weekdays"></div>
+      <div id="weeks"></div>
+    </div>
+
+    <p class="gaps" id="gaps"></p>
   </main>
 
   <dialog class="help" id="help" aria-labelledby="help-title">
     <h2 id="help-title">Keyboard shortcuts</h2>
     <dl>
       <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Move between days</dd>
+      <dt><kbd>Enter</kbd></dt><dd>Open or close the day</dd>
+      <dt><kbd>Esc</kbd></dt><dd>Close the day</dd>
       <dt><kbd>Page Up</kbd> <kbd>Page Down</kbd></dt><dd>Previous or next month or week</dd>
       <dt><kbd>T</kbd></dt><dd>Jump to today</dd>
       <dt><kbd>M</kbd> <kbd>W</kbd></dt><dd>Month or week view</dd>
-      <dt><kbd>?</kbd></dt><dd>Show this list</dd>
     </dl>
-    <form method="dialog"><button class="pill-btn">Close</button></form>
+    <form method="dialog"><button class="pill">Close</button></form>
   </dialog>
 
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">

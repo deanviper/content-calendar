@@ -6,14 +6,13 @@ const PLATFORMS = {
 };
 // Order is the order of the status filters and of the workflow.
 const STATUSES = {
-  draft: "Draft",
-  suggested: "Suggested",
   scheduled: "Scheduled",
+  suggested: "Suggested",
+  draft: "Draft",
   published: "Published",
 };
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const MAX_CHIPS = 3;
-const narrow = window.matchMedia("(max-width: 1080px)");
+const MAX_LINES = 3;
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -22,9 +21,8 @@ const els = {
   statuses: $("statuses"),
   grid: $("grid"),
   weekdays: $("weekdays"),
-  days: $("days"),
+  weeks: $("weeks"),
   gaps: $("gaps"),
-  day: $("day"),
   help: $("help"),
 };
 
@@ -38,6 +36,8 @@ const state = {
   platform: "all",
   statuses: new Set(Object.keys(STATUSES)),
   selected: parseHash() ?? todayKey,
+  // The selected day's week opens into a sheet below it; closing it keeps the selection.
+  open: true,
   focusPost: null,
 };
 
@@ -101,7 +101,7 @@ function el(tag, className, text) {
 function icon(platform) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("class", `pf pf-${platform}`);
+  svg.setAttribute("class", "pf");
   svg.setAttribute("aria-hidden", "true");
   const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
   use.setAttribute("href", `#i-${platform}`);
@@ -109,30 +109,35 @@ function icon(platform) {
   return svg;
 }
 
-// The period on screen: a month of weeks, or one week.
-
-function period() {
-  if (state.view === "week") {
-    const start = weekStart(state.selected);
-    return { start, days: 7, inPeriod: () => true };
-  }
-  const d = fromKey(state.selected);
-  const y = d.getUTCFullYear();
-  const m = d.getUTCMonth();
-  const first = key(y, m, 1);
-  const start = weekStart(first);
-  const daysInMonth = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-  const lead = (fromKey(first).getUTCDay() + 6) % 7;
-  return {
-    start,
-    days: Math.ceil((lead + daysInMonth) / 7) * 7,
-    inPeriod: (k) => fromKey(k).getUTCMonth() === m,
-  };
+// A post's status is read from one small mark: filled for what will go out, amber for what waits on
+// a decision, an outline for drafts, grey for what has already gone out.
+function mark(status) {
+  const m = el("span", `mark m-${status}`);
+  m.setAttribute("aria-hidden", "true");
+  return m;
 }
 
+// The period on screen: a month of weeks, or one week.
+
 function periodKeys() {
-  const p = period();
-  return Array.from({ length: p.days }, (_, i) => addDays(p.start, i)).map((k) => ({ k, inPeriod: p.inPeriod(k) }));
+  let start;
+  let days;
+  let inPeriod;
+  if (state.view === "week") {
+    start = weekStart(state.selected);
+    days = 7;
+    inPeriod = () => true;
+  } else {
+    const d = fromKey(state.selected);
+    const y = d.getUTCFullYear();
+    const m = d.getUTCMonth();
+    const first = key(y, m, 1);
+    start = weekStart(first);
+    const lead = (fromKey(first).getUTCDay() + 6) % 7;
+    days = Math.ceil((lead + new Date(Date.UTC(y, m + 1, 0)).getUTCDate()) / 7) * 7;
+    inPeriod = (k) => fromKey(k).getUTCMonth() === m;
+  }
+  return Array.from({ length: days }, (_, i) => addDays(start, i)).map((k) => ({ k, inPeriod: inPeriod(k) }));
 }
 
 // Rendering
@@ -144,40 +149,33 @@ function render() {
     (state.byDay.get(k) ?? []).filter((p) => state.platform === "all" || p.platform === state.platform));
   const shown = platformPosts.filter((p) => state.statuses.has(p.status));
 
-  renderTitle(inPeriod);
-  renderSub(shown);
-  renderStatuses(platformPosts);
-  renderGrid(keys);
-  renderGaps(inPeriod);
-  renderDay();
-}
-
-function renderTitle(inPeriod) {
   if (state.view === "week") {
     const first = fromKey(inPeriod[0].k);
     const last = fromKey(inPeriod[6].k);
-    els.title.textContent = `${rangeFmt.format(first)} – ${rangeFmt.format(last)} ${last.getUTCFullYear()}`;
+    els.title.textContent = `${rangeFmt.format(first)} – ${rangeFmt.format(last)}`;
   } else {
     els.title.textContent = monthFmt.format(fromKey(state.selected));
   }
-}
 
-function renderSub(shown) {
   const per = (pf) => shown.filter((p) => p.platform === pf).length;
-  const parts = [shown.length ? plural(shown.length, "post") : `Nothing planned this ${state.view} yet`];
-  if (shown.length && state.platform === "all") parts.push(`X ${per("x")}`, `LinkedIn ${per("linkedin")}`);
-  parts.push(`Times in ${TIME_ZONE_LABEL}`);
-  els.sub.textContent = parts.join(" · ");
+  const sub = [shown.length ? plural(shown.length, "post") : `Nothing planned this ${state.view} yet`];
+  if (shown.length && state.platform === "all") sub.push(`${per("x")} on X`, `${per("linkedin")} on LinkedIn`);
+  sub.push(`times in ${TIME_ZONE_LABEL}`);
+  els.sub.textContent = sub.join(" · ");
+
+  renderStatuses(platformPosts);
+  renderGrid(keys);
+  renderGaps(inPeriod);
 }
 
 function renderStatuses(platformPosts) {
   els.statuses.replaceChildren(...Object.entries(STATUSES).map(([status, label]) => {
     const count = platformPosts.filter((p) => p.status === status).length;
-    const btn = el("button", `status-toggle s-${status}`);
+    const btn = el("button", "filter");
     btn.type = "button";
     btn.dataset.status = status;
     btn.setAttribute("aria-pressed", String(state.statuses.has(status)));
-    btn.append(el("span", "swatch"), el("span", null, label), el("span", "n", String(count)));
+    btn.append(mark(status), el("span", null, label), el("span", "n", String(count)));
     return btn;
   }));
 }
@@ -185,20 +183,32 @@ function renderStatuses(platformPosts) {
 function renderGrid(keys) {
   els.grid.dataset.view = state.view;
   els.weekdays.replaceChildren(...keys.slice(0, 7).map(({ k }) => {
-    const head = el("span", null, state.view === "week" ? shortDayFmt.format(fromKey(k)) : WEEKDAYS[(fromKey(k).getUTCDay() + 6) % 7]);
+    const label = state.view === "week" ? shortDayFmt.format(fromKey(k)) : WEEKDAYS[(fromKey(k).getUTCDay() + 6) % 7];
+    const head = el("span", k === todayKey && state.view === "week" ? "is-today" : null, label);
     head.setAttribute("role", "columnheader");
-    if (state.view === "week" && k === todayKey) head.classList.add("is-today");
     return head;
   }));
 
   const rows = [];
   for (let w = 0; w < keys.length / 7; w++) {
-    const row = el("div", "week-row");
+    const week = keys.slice(w * 7, w * 7 + 7);
+    const row = el("div", "week");
     row.setAttribute("role", "row");
-    row.append(...keys.slice(w * 7, w * 7 + 7).map(({ k, inPeriod }) => renderCell(k, inPeriod)));
+    row.append(...week.map(({ k, inPeriod }) => renderCell(k, inPeriod)));
     rows.push(row);
+    const col = week.findIndex(({ k }) => k === state.selected);
+    if (state.open && col >= 0) {
+      row.classList.add("is-open");
+      row.style.setProperty("--col", col);
+      rows.push(renderSheet(state.selected));
+    }
   }
-  els.days.replaceChildren(...rows);
+  els.weeks.replaceChildren(...rows);
+
+  if (state.focusPost) {
+    els.weeks.querySelector(`.post[data-post="${state.focusPost}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    state.focusPost = null;
+  }
 }
 
 function renderCell(k, inPeriod) {
@@ -210,10 +220,10 @@ function renderCell(k, inPeriod) {
   const dow = d.getUTCDay();
   if (dow === 0 || dow === 6) cell.classList.add("weekend");
   if (!inPeriod) cell.classList.add("outside");
-  if (k < todayKey) cell.classList.add("past");
   if (k === todayKey) cell.classList.add("today");
   const selected = k === state.selected;
   cell.setAttribute("aria-selected", String(selected));
+  if (selected && state.open) cell.setAttribute("aria-expanded", "true");
   cell.tabIndex = selected ? 0 : -1;
   cell.setAttribute("aria-label",
     `${longDayFmt.format(d)}${k === todayKey ? ", today" : ""}, ${posts.length ? plural(posts.length, "post") : "nothing planned"}`);
@@ -222,34 +232,28 @@ function renderCell(k, inPeriod) {
   date.setAttribute("aria-hidden", "true");
   cell.append(date);
 
-  const max = state.view === "week" ? Infinity : MAX_CHIPS;
   if (posts.length) {
-    const list = el("span", "chips");
+    const max = state.view === "week" ? Infinity : MAX_LINES;
+    const list = el("span", "lines");
     list.setAttribute("aria-hidden", "true");
-    for (const post of posts.slice(0, max)) list.append(renderChip(post));
-    if (posts.length > max) list.append(el("span", "more", `${posts.length - max} more`));
+    for (const post of posts.slice(0, max)) list.append(renderLine(post));
+    if (posts.length > max) list.append(el("span", "more", `+${posts.length - max} more`));
     cell.append(list);
   }
   return cell;
 }
 
-function renderChip(post) {
-  const chip = el("span", `chip s-${post.status}`);
-  chip.dataset.post = post.id;
-  chip.append(icon(post.platform), el("span", "chip-time", timeFmt.format(new Date(post.scheduledAt))));
-  chip.append(el("span", "chip-text", post.copy.split("\n")[0]));
+function renderLine(post) {
+  const line = el("span", `line s-${post.status}`);
+  line.dataset.post = post.id;
+  line.append(mark(post.status), el("span", "line-time", timeFmt.format(new Date(post.scheduledAt))), icon(post.platform));
   if (state.view === "week") {
-    chip.append(el("span", "chip-status", STATUSES[post.status]));
-    const img = post.assets.find((a) => a.type === "image");
-    if (img) {
-      const thumb = el("img", "chip-thumb");
-      thumb.src = img.url;
-      thumb.alt = "";
-      thumb.loading = "lazy";
-      chip.append(thumb);
-    }
+    line.append(el("span", "line-text", post.copy.split("\n")[0]));
+    if (post.status === "suggested" || post.status === "draft") line.append(el("span", "line-status", STATUSES[post.status]));
+  } else {
+    line.append(el("span", "line-text", post.copy.split("\n")[0]));
   }
-  return chip;
+  return line;
 }
 
 // Upcoming weekdays in the period with nothing planned: the gaps a planner fills next.
@@ -262,50 +266,67 @@ function renderGaps(inPeriod) {
     return;
   }
   const list = gaps.slice(0, 6).map((k) => shortDayFmt.format(fromKey(k))).join(", ");
-  els.gaps.textContent = `${plural(gaps.length, "upcoming weekday")} with nothing planned: ${list}${gaps.length > 6 ? "…" : ""}`;
+  els.gaps.textContent = `Open weekdays ahead: ${list}${gaps.length > 6 ? ` and ${gaps.length - 6} more` : ""}`;
 }
 
-function renderDay() {
-  const k = state.selected;
+// The day sheet: the selected day's posts, read the way each network will show them.
+
+function renderSheet(k) {
   const posts = postsOn(k);
   const all = state.byDay.get(k) ?? [];
+  const sheet = el("section", "sheet");
+  sheet.setAttribute("aria-label", longDayFmt.format(fromKey(k)));
 
-  const head = el("div", "day-head");
-  head.append(el("h2", null, longDayFmt.format(fromKey(k))));
+  const head = el("header", "sheet-head");
+  const title = el("div");
+  title.append(el("h2", null, longDayFmt.format(fromKey(k))));
   const sub = [];
   if (k === todayKey) sub.push("Today");
   sub.push(posts.length ? plural(posts.length, "post") : "Nothing planned");
-  head.append(el("p", "day-sub", sub.join(" · ")));
+  title.append(el("p", "sub", sub.join(" · ")));
+  const tools = el("div", "nav");
+  const prev = el("button", "icon-btn");
+  prev.type = "button";
+  prev.dataset.step = "-1";
+  prev.setAttribute("aria-label", "Previous day");
+  prev.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+  const next = prev.cloneNode(true);
+  next.dataset.step = "1";
+  next.setAttribute("aria-label", "Next day");
+  next.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="m6 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+  const close = el("button", "pill", "Close");
+  close.type = "button";
+  close.dataset.close = "";
+  tools.append(prev, next, close);
+  head.append(title, tools);
+  sheet.append(head);
 
-  const children = [head];
   if (!posts.length) {
     const hidden = all.length - posts.length;
-    children.push(el("p", "empty", hidden
+    sheet.append(el("p", "empty", hidden
       ? `${plural(hidden, "post")} on this day ${hidden === 1 ? "is" : "are"} hidden by the filters.`
       : "No posts scheduled or suggested for this day."));
-  } else {
-    children.push(...posts.map(renderPost));
+    return sheet;
   }
-  els.day.replaceChildren(...children);
-
-  if (state.focusPost) {
-    els.day.querySelector(`[data-post="${state.focusPost}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    state.focusPost = null;
-  }
+  const list = el("div", "posts");
+  list.append(...posts.map(renderPost));
+  sheet.append(list);
+  return sheet;
 }
 
 function renderPost(post) {
   const platform = PLATFORMS[post.platform];
-  const card = el("article", `post s-${post.status}`);
-  card.dataset.post = post.id;
+  const article = el("article", `post s-${post.status}`);
+  article.dataset.post = post.id;
 
-  const head = el("header", "post-head");
-  const name = el("span", "platform");
-  name.append(icon(post.platform), platform.name);
-  const time = el("time", "post-time", `${timeFmt.format(new Date(post.scheduledAt))}`);
+  const meta = el("header", "post-meta");
+  const name = el("span", "post-platform", platform.name);
+  const time = el("time", null, timeFmt.format(new Date(post.scheduledAt)));
   time.dateTime = post.scheduledAt;
-  head.append(name, time, el("span", `status s-${post.status}`, STATUSES[post.status] ?? post.status));
-  card.append(head, post.platform === "x" ? previewX(post) : previewLinkedIn(post));
+  const status = el("span", `status s-${post.status}`);
+  status.append(mark(post.status), STATUSES[post.status] ?? post.status);
+  meta.append(name, time, status);
+  article.append(meta, post.platform === "x" ? previewX(post) : previewLinkedIn(post));
 
   const length = fullText(post).length;
   const foot = el("footer", "post-foot");
@@ -316,15 +337,15 @@ function renderPost(post) {
   } else {
     count.textContent = `${length} / ${platform.limit}`;
   }
-  const actions = el("span", "post-actions");
+  const actions = el("span", "actions");
   for (const a of post.assets) {
-    const dl = el("a", "pill-btn", "Download asset");
+    const dl = el("a", "pill", "Download");
     dl.href = a.url;
     dl.download = a.name;
     dl.setAttribute("aria-label", `Download ${a.name}`);
     actions.append(dl);
   }
-  const copy = el("button", "pill-btn primary", "Copy text");
+  const copy = el("button", "pill primary", "Copy text");
   copy.type = "button";
   copy.addEventListener("click", async () => {
     try {
@@ -337,8 +358,8 @@ function renderPost(post) {
   });
   actions.append(copy);
   foot.append(count, actions);
-  card.append(foot, renderComments(post));
-  return card;
+  article.append(foot, renderComments(post));
+  return article;
 }
 
 // Comments: anyone can leave one, signed in or not. The name is remembered on this device.
@@ -364,9 +385,8 @@ function commentItem(c) {
 }
 
 function renderComments(post) {
-  const section = el("details", "comments");
-  if (post.comments.length) section.open = true;
-  const summary = el("summary", null, post.comments.length ? plural(post.comments.length, "comment") : "Add a comment");
+  const section = el("section", "comments");
+  const heading = el("h3", null, post.comments.length ? plural(post.comments.length, "comment") : "Comments");
   const list = el("ol", "comment-list");
   list.append(...post.comments.map(commentItem));
 
@@ -381,12 +401,12 @@ function renderComments(post) {
   name.setAttribute("aria-label", "Your name");
   const body = el("textarea", "field");
   body.name = "body";
-  body.rows = 2;
-  body.placeholder = "What should change?";
+  body.rows = 1;
+  body.placeholder = "Leave a note";
   body.maxLength = COMMENT_LIMITS.body;
   body.required = true;
   body.setAttribute("aria-label", "Comment");
-  const send = el("button", "pill-btn primary", "Comment");
+  const send = el("button", "pill", "Send");
   send.type = "submit";
   const msg = el("p", "comment-msg");
   msg.setAttribute("role", "status");
@@ -401,7 +421,7 @@ function renderComments(post) {
       rememberName(c.authorName);
       post.comments.push(c);
       list.append(commentItem(c));
-      summary.textContent = plural(post.comments.length, "comment");
+      heading.textContent = plural(post.comments.length, "comment");
       body.value = "";
     } catch (err) {
       msg.textContent = err.message;
@@ -410,7 +430,7 @@ function renderComments(post) {
     }
   });
 
-  section.append(summary, list, form);
+  section.append(heading, list, form);
   return section;
 }
 
@@ -478,7 +498,7 @@ function previewLinkedIn(post) {
       note.remove();
     });
     short.append(more);
-    const note = el("p", "pv-fold", `Readers see the first ${fold} characters before "see more"`);
+    const note = el("p", "pv-fold", `The feed shows the first ${fold} characters before "see more"`);
     pv.append(short, note);
   } else {
     pv.append(text);
@@ -490,13 +510,13 @@ function previewLinkedIn(post) {
 
 // Interaction
 
-function select(k, { focus = false, post = null, reveal = false } = {}) {
+function select(k, { focus = false, post = null, toggle = false } = {}) {
+  state.open = toggle && k === state.selected ? !state.open : true;
   state.selected = k;
   state.focusPost = post;
   history.replaceState(null, "", `#${k}`);
   render();
-  if (focus) els.days.querySelector(`[data-key="${k}"]`)?.focus();
-  if (reveal && narrow.matches) els.day.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (focus) els.weeks.querySelector(`.cell[data-key="${k}"]`)?.focus();
 }
 
 function shift(n) {
@@ -515,14 +535,26 @@ function setView(view) {
   render();
 }
 
-els.days.addEventListener("click", (e) => {
+els.weeks.addEventListener("click", (e) => {
+  const step = e.target.closest("[data-step]");
+  if (step) {
+    select(addDays(state.selected, Number(step.dataset.step)));
+    return;
+  }
+  if (e.target.closest("[data-close]")) {
+    state.open = false;
+    render();
+    els.weeks.querySelector(`.cell[data-key="${state.selected}"]`)?.focus();
+    return;
+  }
   const cell = e.target.closest(".cell");
   if (!cell) return;
-  const chip = e.target.closest(".chip");
-  select(cell.dataset.key, { post: chip?.dataset.post ?? null, reveal: true });
+  const line = e.target.closest(".line");
+  select(cell.dataset.key, { post: line?.dataset.post ?? null, toggle: !line });
 });
 
-els.days.addEventListener("keydown", (e) => {
+els.weeks.addEventListener("keydown", (e) => {
+  if (!e.target.classList.contains("cell")) return;
   const moves = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
   if (e.key in moves) {
     e.preventDefault();
@@ -530,18 +562,22 @@ els.days.addEventListener("keydown", (e) => {
   } else if (e.key === "PageUp" || e.key === "PageDown") {
     e.preventDefault();
     shift(e.key === "PageUp" ? -1 : 1);
-    els.days.querySelector(`[data-key="${state.selected}"]`)?.focus();
+    els.weeks.querySelector(`.cell[data-key="${state.selected}"]`)?.focus();
   } else if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
-    els.day.focus();
+    select(state.selected, { focus: true, toggle: true });
   }
 });
 
 document.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey || els.help.open) return;
-  if (e.target.closest("input, textarea, [contenteditable]")) return;
+  if (e.target.closest("input, textarea, select, [contenteditable]")) return;
   const k = e.key.toLowerCase();
-  if (k === "t") select(todayKey, { focus: true });
+  if (e.key === "Escape" && state.open) {
+    state.open = false;
+    render();
+    els.weeks.querySelector(`.cell[data-key="${state.selected}"]`)?.focus();
+  } else if (k === "t") select(todayKey, { focus: true });
   else if (k === "m") setView("month");
   else if (k === "w") setView("week");
   else if (e.key === "?") els.help.showModal();
