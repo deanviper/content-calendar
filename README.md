@@ -11,8 +11,8 @@ Who can do what:
 
 - **Anyone with the calendar link** sees the posts and can comment on them, no account needed.
   Comments are limited to 5 per sender per 10 minutes.
-- **Editors** (emails in `public.editors`, at first just you) add and edit posts, delete
-  comments, and see the stats page after an email sign-in.
+- **Editors** (emails in `public.editors`, at first just joaquin@silencio.network) sign in with
+  Google to add, edit, approve, move and delete posts, delete comments, and see the stats page.
 - **The collector** writes stats with the service role.
 
 Without Supabase settings the pages run on sample data, so the front end works on its own.
@@ -26,11 +26,16 @@ Without Supabase settings the pages run on sample data, so the front end works o
    ```sql
    insert into public.editors (email) values ('you@silencio.network');
    ```
-   Under Authentication → URL Configuration, set the site's address as the Site URL so the
-   sign-in links for the stats page work.
-3. **Connect the front end.** Put the project URL and anon key in `frontend/src/config.js`.
+   Then turn on Google sign-in (next step).
+3. **Google sign-in.** In Google Cloud Console → APIs & Services → Credentials, create an OAuth
+   client ID of type *Web application*, with this authorised redirect URI:
+   `https://<project-ref>.supabase.co/auth/v1/callback`. Paste its client ID and secret into
+   Supabase → Authentication → Sign In / Providers → Google, and enable it. Under Authentication →
+   URL Configuration, set the deployed site as the Site URL and add it (plus
+   `http://localhost:8000/**` for local work) to the redirect URLs.
+4. **Connect the front end.** Put the project URL and anon key in `frontend/src/config.js`.
    The anon key is meant to be public: it can read the calendar and add comments, nothing else.
-4. **Deploy the collector.**
+5. **Deploy the collector.**
    ```sh
    supabase functions deploy collect-stats --no-verify-jwt
    supabase secrets set COLLECTOR_SECRET=<long random string> \
@@ -38,12 +43,12 @@ Without Supabase settings the pages run on sample data, so the front end works o
      LINKEDIN_ACCESS_TOKEN=… LINKEDIN_ORG_ID=…
    ```
    `--no-verify-jwt` is safe because the function checks `x-collector-secret` itself.
-5. **Pull the history once,** which creates past posts and their first snapshots:
+6. **Pull the history once,** which creates past posts and their first snapshots:
    ```sh
    curl -X POST "https://<ref>.supabase.co/functions/v1/collect-stats?mode=backfill&since=2026-01-01" \
      -H "x-collector-secret: <COLLECTOR_SECRET>"
    ```
-6. **Schedule it.** Run `supabase/schedule.sql` in the SQL editor after filling in its two
+7. **Schedule it.** Run `supabase/schedule.sql` in the SQL editor after filling in its two
    placeholders. It collects every 6 hours.
 
 ## How the stats work
@@ -72,11 +77,11 @@ SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/import-stats.mjs pas
 
 ### Adding posts
 
-Until the calendar has its own composer, add posts in the dashboard: Table Editor → `posts` →
-Insert row (`platform`, `status`, `scheduled_at` with `+08:00`, `copy`, `hashtags` like
-`{VoiceAI,Silencio}`). For images, upload to Storage → `post-assets` and add a `post_assets` row with
-the post's `id`, the file's `storage_path` and a `name`. A CSV of drafts can be imported into
-`posts` from the Table Editor too.
+Sign in with Google from the link at the bottom of the calendar. As the editor you get a **New
+post** button (or press N), a New post button on each open day, and **Edit** and **Approve** on
+every post. The composer sets the platform, status, date and time, copy, hashtags and images, and
+shows the X or LinkedIn preview as you type. Moving a post to another day is a date change in the
+composer. Published posts can't be deleted, so their stats stay intact.
 
 Planned posts are linked to their live versions by setting `external_id` (the tweet ID, or the
 LinkedIn `urn:li:share:…`) when they go out. Posts the backfill finds are added as new published

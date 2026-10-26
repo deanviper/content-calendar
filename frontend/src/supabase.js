@@ -1,4 +1,4 @@
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, EDITOR_EMAIL } from "./config.js";
 
 export const configured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
@@ -7,54 +7,86 @@ let client;
 export async function db() {
   if (!configured) throw new Error("Supabase is not configured");
   if (!client) {
-    const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm");
+    const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm");
     client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   }
   return client;
 }
 
-// Resolves once someone is signed in. Until then the page shows an email sign-in link form.
-// Only the stats page asks for this; the calendar is open to anyone with the link.
-export async function signedIn() {
+// Editing: only someone signed in with Google whose email is in public.editors. The page asks the
+// database rather than trusting the email it sees, so the same rule guards the UI and the data.
+
+export async function signInWithGoogle() {
+  const supabase = await db();
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: location.href,
+      // Pre-selects the editor account in Google's picker; it does not grant anything by itself.
+      queryParams: { login_hint: EDITOR_EMAIL, prompt: "select_account" },
+    },
+  });
+  if (error) throw error;
+}
+
+export async function signOut() {
+  const supabase = await db();
+  await supabase.auth.signOut();
+}
+
+// Returns { email } for a signed-in editor, { email, editor: false } for anyone else signed in,
+// or null when nobody is. Sample mode has no accounts, so everyone is an editor there.
+export async function currentUser() {
+  if (!configured) return { email: "sample mode", editor: true };
   const supabase = await db();
   const { data } = await supabase.auth.getSession();
-  if (data.session) return data.session;
-  return new Promise((resolve) => {
-    const screen = signInScreen(supabase);
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) return;
-      sub.subscription.unsubscribe();
-      screen.remove();
-      resolve(session);
-    });
+  const session = data.session;
+  if (!session) return null;
+  const { data: editor, error } = await supabase.rpc("is_editor");
+  return { email: session.user.email, editor: !error && editor === true };
+}
+
+export async function onAuthChange(fn) {
+  if (!configured) return;
+  const supabase = await db();
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === "SIGNED_IN" || event === "SIGNED_OUT") fn();
   });
 }
 
-function signInScreen(supabase) {
+// Resolves once an editor is signed in. Until then the page shows the Google sign-in screen.
+// The stats page uses this; the calendar is open to anyone and offers sign-in only for editing.
+export async function signedIn() {
+  const user = await currentUser();
+  if (user?.editor) return user;
+  return new Promise(() => signInScreen(user));
+}
+
+function signInScreen(user) {
   const wrap = document.createElement("div");
   wrap.className = "signin";
-  wrap.innerHTML = `
-    <form class="signin-card">
-      <img src="${new URL("../assets/logo.svg", import.meta.url)}" alt="silencio" height="24">
-      <h1>Sign in</h1>
-      <p>We'll email you a link. Stats are for Silencio editors only.</p>
-      <label for="signin-email">Work email</label>
-      <input id="signin-email" type="email" autocomplete="email" required>
-      <button class="pill-btn primary" type="submit">Email me a sign-in link</button>
-      <p class="signin-msg" role="status"></p>
-    </form>`;
-  const form = wrap.querySelector("form");
-  const msg = wrap.querySelector(".signin-msg");
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const email = form.querySelector("input").value.trim();
-    msg.textContent = "Sending…";
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: location.href, shouldCreateUser: true },
-    });
-    msg.textContent = error ? `Couldn't send the link: ${error.message}` : `Check ${email} for the sign-in link.`;
+  const card = document.createElement("div");
+  card.className = "signin-card";
+  const logo = document.createElement("img");
+  logo.src = new URL("../assets/logo.svg", import.meta.url);
+  logo.alt = "silencio";
+  logo.height = 22;
+  const title = document.createElement("h1");
+  title.textContent = "Stats";
+  const text = document.createElement("p");
+  text.textContent = user
+    ? `${user.email} can't see stats. Sign in with ${EDITOR_EMAIL}.`
+    : "Sign in with your Silencio Google account.";
+  const btn = document.createElement("button");
+  btn.className = "pill primary";
+  btn.type = "button";
+  btn.textContent = "Continue with Google";
+  btn.addEventListener("click", async () => {
+    if (user) await signOut();
+    await signInWithGoogle();
   });
+  card.append(logo, title, text, btn);
+  wrap.append(card);
   document.body.append(wrap);
   return wrap;
 }
