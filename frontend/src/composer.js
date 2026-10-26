@@ -2,6 +2,8 @@
 // the database refuses writes from anyone else whatever the page shows.
 
 import { savePost, deletePost, TIME_ZONE } from "./data.js";
+import { configured } from "./supabase.js";
+import { prepareDrive, connectDrive, driveReady } from "./drive.js";
 
 const PLATFORM_LIMITS = { x: 280, linkedin: 3000 };
 const STATUS_OPTIONS = [
@@ -50,6 +52,8 @@ function field(labelText, control, hint, tag = "label") {
   if (hint) wrap.append(hint);
   return wrap;
 }
+
+const kind = (f) => (f.type.startsWith("image/") ? "image" : f.type.startsWith("video/") ? "video" : "file");
 
 function parseTags(text) {
   return [...new Set(text.split(/[\s,]+/).map((t) => t.replace(/^#/, "").trim()).filter(Boolean))];
@@ -114,7 +118,7 @@ export function openComposer({ existing = null, day, preview, onSaved, onDeleted
   upload.multiple = true;
   upload.className = "visually-hidden";
   upload.id = `upload-${Date.now()}`;
-  const pick = el("label", "pill", "Add images");
+  const pick = el("label", "pill", "Add photos or videos");
   pick.htmlFor = upload.id;
   pick.tabIndex = 0;
   pick.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); upload.click(); } });
@@ -153,7 +157,7 @@ export function openComposer({ existing = null, day, preview, onSaved, onDeleted
     field("Copy", copy, count),
     field("Hashtags", tags),
     liveField,
-    field("Images", assets, null, "div"),
+    field("Photos and videos", assets, configured ? el("span", "cf-hint", "Saved to the Silencio content calendar folder in your Google Drive, shared by link so everyone can preview them.") : null, "div"),
     msg,
   );
 
@@ -171,7 +175,7 @@ export function openComposer({ existing = null, day, preview, onSaved, onDeleted
 
   function draft() {
     const keep = (existing?.assets ?? []).filter((a) => !removed.has(a.id));
-    const fresh = files.map((f) => ({ type: f.type.startsWith("image/") ? "image" : "file", url: f.preview, name: f.name, alt: "" }));
+    const fresh = files.map((f) => ({ type: kind(f), url: f.preview, name: f.name, alt: "" }));
     return {
       id: existing?.id,
       platform: platform.value(),
@@ -195,19 +199,21 @@ export function openComposer({ existing = null, day, preview, onSaved, onDeleted
     assets.replaceChildren();
     for (const a of existing?.assets ?? []) {
       if (removed.has(a.id)) continue;
-      assets.append(thumb(a.url, a.name, () => { removed.add(a.id); refresh(); }));
+      assets.append(thumb(a.url, a.name, a.type, () => { removed.add(a.id); refresh(); }));
     }
-    files.forEach((f, i) => assets.append(thumb(f.preview, f.name, () => { files.splice(i, 1); refresh(); })));
+    files.forEach((f, i) => assets.append(thumb(f.preview, f.name, kind(f), () => { files.splice(i, 1); refresh(); })));
     assets.append(pick, upload);
 
     sideBody.replaceChildren(d.copy ? preview(d) : el("p", "cf-hint", "The preview appears as you write."));
   }
 
-  function thumb(url, name, onRemove) {
+  // A Drive video's url is its thumbnail image; a video picked here is shown from the file.
+  function thumb(url, name, type, onRemove) {
     const t = el("figure", "cf-thumb");
-    const img = el("img");
+    const img = el(type === "video" && url.startsWith("blob:") ? "video" : "img");
     img.src = url;
-    img.alt = "";
+    if (img.tagName === "IMG") img.alt = "";
+    else img.muted = true;
     const rm = el("button", "cf-remove", "×");
     rm.type = "button";
     rm.setAttribute("aria-label", `Remove ${name}`);
@@ -236,8 +242,13 @@ export function openComposer({ existing = null, day, preview, onSaved, onDeleted
       return;
     }
     save.disabled = true;
-    msg.textContent = files.length ? "Uploading and saving…" : "Saving…";
     try {
+      // Drive access is asked for here, straight from the click, so the popup isn't blocked.
+      if (files.length && configured && !driveReady()) {
+        msg.textContent = "Connecting Google Drive…";
+        await connectDrive();
+      }
+      msg.textContent = files.length ? "Uploading to Drive and saving…" : "Saving…";
       const saved = await savePost(d, { files, removed: [...removed], existing });
       onSaved(saved);
       dialog.close();
@@ -255,6 +266,7 @@ export function openComposer({ existing = null, day, preview, onSaved, onDeleted
     dialog.remove();
   });
 
+  prepareDrive();
   document.body.append(dialog);
   refresh();
   dialog.showModal();

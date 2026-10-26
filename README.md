@@ -35,7 +35,19 @@ Without Supabase settings the pages run on sample data, so the front end works o
    `http://localhost:8000/**` for local work) to the redirect URLs.
 4. **Connect the front end.** Put the project URL and anon key in `frontend/src/config.js`.
    The anon key is meant to be public: it can read the calendar and add comments, nothing else.
-5. **Deploy the collector.**
+5. **Photos and videos in Google Drive.** Uploads go to a *Silencio content calendar* folder that
+   the calendar creates in the editor's Google Drive, and each file is shared as "anyone with the
+   link can view" so everyone sees the previews without signing in. The calendar only gets the
+   `drive.file` scope, so it can see the files it made and nothing else in the Drive. Once:
+   - Google Cloud Console → APIs & Services → Library: enable the **Google Drive API** in the
+     project that holds the OAuth client.
+   - The OAuth client → **Authorised JavaScript origins**: add the deployed site (and
+     `http://localhost:8000` for local work).
+   - Google Workspace must allow link sharing for the editor's account; if it doesn't, the
+     composer says so and the file stays private in Drive.
+   The first upload in a visit opens a small Google window to allow Drive access. The client ID
+   is `GOOGLE_CLIENT_ID` in `frontend/src/config.js`. Removing an image moves it to the Drive trash.
+6. **Deploy the collector.**
    ```sh
    supabase functions deploy collect-stats --no-verify-jwt
    supabase secrets set COLLECTOR_SECRET=<long random string> \
@@ -43,12 +55,12 @@ Without Supabase settings the pages run on sample data, so the front end works o
      LINKEDIN_ACCESS_TOKEN=… LINKEDIN_ORG_ID=…
    ```
    `--no-verify-jwt` is safe because the function checks `x-collector-secret` itself.
-6. **Pull the history once,** which creates past posts and their first snapshots:
+7. **Pull the history once,** which creates past posts and their first snapshots:
    ```sh
    curl -X POST "https://<ref>.supabase.co/functions/v1/collect-stats?mode=backfill&since=2026-01-01" \
      -H "x-collector-secret: <COLLECTOR_SECRET>"
    ```
-7. **Schedule it.** Run `supabase/schedule.sql` in the SQL editor after filling in its two
+8. **Schedule it.** Run `supabase/schedule.sql` in the SQL editor after filling in its two
    placeholders. It collects every 6 hours.
 
 ## How the stats work
@@ -79,7 +91,7 @@ SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/import-stats.mjs pas
 
 Sign in with Google from the link at the bottom of the calendar. As the editor you get a **New
 post** button (or press N), a New post button on each open day, and **Edit** and **Approve** on
-every post. The composer sets the platform, status, date and time, copy, hashtags and images, and
+every post. The composer sets the platform, status, date and time, copy, hashtags, photos and videos, and
 shows the X or LinkedIn preview as you type. Moving a post to another day is a date change in the
 composer. Published posts can't be deleted, so their stats stay intact.
 
