@@ -286,8 +286,6 @@ textarea.field { padding: 10px 14px; resize: vertical; }
 [data-view="week"] .line-status { flex-basis: 100%; font-size: 12px; color: var(--ink-3); }
 [data-view="week"] .s-suggested .line-status { color: var(--decide); }
 
-.gaps { margin: 20px 0 0; color: var(--ink-3); }
-.gaps:empty { display: none; }
 
 /* Day sheet */
 

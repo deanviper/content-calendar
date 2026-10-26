@@ -8,11 +8,10 @@ const PLATFORMS = {
   linkedin: { name: "LinkedIn", limit: 3000, fold: 210 },
 };
 // Order is the order of the status filters and of the workflow.
+// A post is a draft until the stats collector finds it live on X or LinkedIn, then it is posted.
 const STATUSES = {
-  scheduled: "Scheduled",
-  suggested: "Suggested",
   draft: "Draft",
-  published: "Published",
+  published: "Posted",
 };
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_LINES = 3;
@@ -25,7 +24,6 @@ const els = {
   grid: $("grid"),
   weekdays: $("weekdays"),
   weeks: $("weeks"),
-  gaps: $("gaps"),
   help: $("help"),
   newPost: $("new-post"),
   account: $("account"),
@@ -200,7 +198,6 @@ function render() {
 
   renderStatuses(platformPosts);
   renderGrid(keys);
-  renderGaps(inPeriod);
 }
 
 function renderStatuses(platformPosts) {
@@ -284,24 +281,11 @@ function renderLine(post) {
   line.append(mark(post.status), el("span", "line-time", timeFmt.format(new Date(post.scheduledAt))), icon(post.platform));
   if (state.view === "week") {
     line.append(el("span", "line-text", post.copy.split("\n")[0]));
-    if (post.status === "suggested" || post.status === "draft") line.append(el("span", "line-status", STATUSES[post.status]));
+    if (post.status === "draft") line.append(el("span", "line-status", STATUSES.draft));
   } else {
     line.append(el("span", "line-text", post.copy.split("\n")[0]));
   }
   return line;
-}
-
-// Upcoming weekdays in the period with nothing planned: the gaps a planner fills next.
-function renderGaps(inPeriod) {
-  const gaps = inPeriod
-    .map(({ k }) => k)
-    .filter((k) => k >= todayKey && ![0, 6].includes(fromKey(k).getUTCDay()) && !postsOn(k).length);
-  if (!gaps.length) {
-    els.gaps.textContent = "";
-    return;
-  }
-  const list = gaps.slice(0, 6).map((k) => shortDayFmt.format(fromKey(k))).join(", ");
-  els.gaps.textContent = `Open weekdays ahead: ${list}${gaps.length > 6 ? ` and ${gaps.length - 6} more` : ""}`;
 }
 
 // The day sheet: the selected day's posts, read the way each network will show them.
@@ -346,7 +330,7 @@ function renderSheet(k) {
     const hidden = all.length - posts.length;
     sheet.append(el("p", "empty", hidden
       ? `${plural(hidden, "post")} on this day ${hidden === 1 ? "is" : "are"} hidden by the filters.`
-      : "No posts scheduled or suggested for this day."));
+      : "No posts for this day."));
     return sheet;
   }
   const list = el("div", "posts");
@@ -386,6 +370,13 @@ function renderPost(post) {
     dl.setAttribute("aria-label", `Download ${a.name}`);
     actions.append(dl);
   }
+  if (post.externalUrl) {
+    const live = el("a", "pill", post.platform === "x" ? "Open on X" : "Open on LinkedIn");
+    live.href = post.externalUrl;
+    live.target = "_blank";
+    live.rel = "noopener";
+    actions.append(live);
+  }
   const copy = el("button", "pill primary", "Copy text");
   copy.type = "button";
   copy.addEventListener("click", async () => {
@@ -399,12 +390,6 @@ function renderPost(post) {
   });
   actions.append(copy);
   if (isEditor()) {
-    if (post.status === "suggested") {
-      const approve = el("button", "pill", "Approve");
-      approve.type = "button";
-      approve.addEventListener("click", () => approvePost(post, approve));
-      actions.prepend(approve);
-    }
     const edit = el("button", "pill", "Edit");
     edit.type = "button";
     edit.addEventListener("click", () => compose(post));
@@ -745,18 +730,6 @@ function compose(existing = null, day = state.selected, restore = null) {
       render();
     },
   });
-}
-
-async function approvePost(post, button) {
-  button.disabled = true;
-  try {
-    upsertPost(await savePost({ ...post, status: "scheduled" }, { existing: post }));
-    render();
-  } catch (err) {
-    button.disabled = false;
-    button.textContent = "Couldn't approve";
-    console.error(err);
-  }
 }
 
 els.weeks.addEventListener("click", (e) => {

@@ -60,7 +60,7 @@ Without Supabase settings the pages run on sample data, so the front end works o
      -H "x-collector-secret: <COLLECTOR_SECRET>"
    ```
 8. **Schedule it.** Run `supabase/schedule.sql` in the SQL editor after filling in its two
-   placeholders. It collects every 6 hours.
+   placeholders. It runs once a day; **Resync now** on the stats page runs it on demand.
 
 ## How the stats work
 
@@ -89,14 +89,16 @@ SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/import-stats.mjs pas
 ### Adding posts
 
 Sign in with Google from the link at the bottom of the calendar. As the editor you get a **New
-post** button (or press N), a New post button on each open day, and **Edit** and **Approve** on
-every post. The composer sets the platform, status, date and time, copy, hashtags, photos and videos, and
-shows the X or LinkedIn preview as you type. Moving a post to another day is a date change in the
-composer. Published posts can't be deleted, so their stats stay intact.
+post** button (or press N), a New post button on each open day, and **Edit** on every post. The
+composer sets the platform, date and time, copy, hashtags, photos and videos, and shows the X or
+LinkedIn preview as you type. Moving a post to another day is a date change in the composer.
 
-Planned posts are linked to their live versions by setting `external_id` (the tweet ID, or the
-LinkedIn `urn:li:share:…`) when they go out. Posts the backfill finds are added as new published
-posts.
+A post has two states. It is a **draft** until it goes out; then it is **posted**. Nobody marks
+that by hand: on every run the collector reads the account's recent posts (`DISCOVER_DAYS`,
+default 7) and matches each new one to a draft on the same platform whose words are at least 75%
+the same, from two weeks before its planned day to a month after. The draft then moves to the time
+it went out and gets the live link. Live posts with no matching draft are added as posted. Posted
+posts can't be deleted, so their stats stay intact. Stats appear only on the stats page.
 
 ## Develop
 

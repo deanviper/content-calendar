@@ -20,12 +20,6 @@ export function takeStashedDraft() {
 }
 
 const PLATFORM_LIMITS = { x: 280, linkedin: 3000 };
-const STATUS_OPTIONS = [
-  ["draft", "Draft"],
-  ["suggested", "Suggested"],
-  ["scheduled", "Scheduled"],
-  ["published", "Published"],
-];
 
 const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" });
 const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: TIME_ZONE, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -97,7 +91,6 @@ export function openComposer({ existing = null, day, restore = null, preview, on
 
   const form = el("form", "composer-form");
   const platform = segmented("Platform", [["x", "X"], ["linkedin", "LinkedIn"]], base?.platform ?? "x");
-  const status = segmented("Status", STATUS_OPTIONS, base?.status ?? "draft");
 
   const date = el("input", "field");
   date.type = "date";
@@ -121,11 +114,6 @@ export function openComposer({ existing = null, day, restore = null, preview, on
   tags.placeholder = "VoiceAI, Datasets";
   tags.value = (base?.hashtags ?? []).join(", ");
 
-  const liveUrl = el("input", "field");
-  liveUrl.type = "url";
-  liveUrl.placeholder = "https://x.com/SilencioNetwork/status/…";
-  liveUrl.value = base?.externalUrl ?? "";
-  const liveField = field("Live post link", liveUrl, el("span", "cf-hint", "Lets the stats link to it. Optional."));
 
   const assets = el("div", "cf-assets");
   const upload = el("input");
@@ -168,11 +156,9 @@ export function openComposer({ existing = null, day, restore = null, preview, on
 
   form.append(
     field("Platform", platform, null, "div"),
-    field("Status", status, null, "div"),
     when,
     field("Copy", copy, count),
     field("Hashtags", tags),
-    liveField,
     field("Photos and videos", assets, configured ? el("span", "cf-hint", "Saved to the Silencio content calendar folder in your Google Drive, shared by link so everyone can preview them.") : null, "div"),
     msg,
   );
@@ -195,11 +181,12 @@ export function openComposer({ existing = null, day, restore = null, preview, on
     return {
       id: existing?.id,
       platform: platform.value(),
-      status: status.value(),
+      // Every post is written as a draft; the stats collector marks it posted once it is live.
+      status: existing?.status === "published" ? "published" : "draft",
       scheduledAt: `${date.value}T${time.value || "09:00"}:00+08:00`,
       copy: copy.value.trim(),
       hashtags: parseTags(tags.value),
-      externalUrl: liveUrl.value.trim(),
+      externalUrl: existing?.externalUrl ?? "",
       assets: [...keep, ...fresh],
     };
   }
@@ -210,7 +197,6 @@ export function openComposer({ existing = null, day, restore = null, preview, on
     const length = (d.hashtags.length ? `${d.copy}\n\n${d.hashtags.map((t) => `#${t}`).join(" ")}` : d.copy).length;
     count.textContent = length > limit ? `${length - limit} over the ${limit} limit` : `${length} / ${limit}`;
     count.classList.toggle("over", length > limit);
-    liveField.hidden = d.status !== "published";
 
     assets.replaceChildren();
     for (const a of existing?.assets ?? []) {
