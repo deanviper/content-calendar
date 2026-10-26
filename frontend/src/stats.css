@@ -24,6 +24,10 @@
   padding: 28px var(--gutter) 64px;
 }
 
+.stats-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.sync { display: flex; align-items: center; gap: 12px; }
+.sync-note { color: var(--ink-2); font-size: 13px; }
+
 .stats-head h1 {
   margin: 0;
   font-size: 30px;
