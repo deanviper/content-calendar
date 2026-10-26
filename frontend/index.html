@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Content calendar · Silencio</title>
+  <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="src/styles.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="./" aria-label="Silencio content calendar">
+      <img src="assets/mark.svg" alt="" width="24" height="24">
+      <span class="brand-name">silencio</span>
+      <span class="brand-scope">Content calendar</span>
+    </a>
+    <div class="filter" role="radiogroup" aria-label="Platform">
+      <button type="button" role="radio" data-platform="all" aria-checked="true">All</button>
+      <button type="button" role="radio" data-platform="x" aria-checked="false">X</button>
+      <button type="button" role="radio" data-platform="linkedin" aria-checked="false">LinkedIn</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="month" aria-labelledby="month-title">
+      <div class="month-head">
+        <h1 id="month-title" aria-live="polite"></h1>
+        <p class="month-summary" id="month-summary"></p>
+        <div class="month-nav">
+          <button type="button" class="ghost" id="prev" aria-label="Previous month">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+          </button>
+          <button type="button" class="ghost" id="today">Today</button>
+          <button type="button" class="ghost" id="next" aria-label="Next month">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="m6 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="grid" role="grid" aria-labelledby="month-title">
+        <div class="weekdays" role="row"></div>
+        <div class="days" id="days"></div>
+      </div>
+
+      <ul class="legend" aria-label="Key">
+        <li><span class="dot dot-x"></span>X</li>
+        <li><span class="dot dot-linkedin"></span>LinkedIn</li>
+        <li><span class="dot dot-suggested"></span>Suggested, not yet approved</li>
+      </ul>
+    </section>
+
+    <aside class="day" id="day" aria-live="polite"></aside>
+  </main>
+
+  <template id="post-template">
+    <article class="post">
+      <header class="post-head">
+        <span class="platform"></span>
+        <time class="post-time"></time>
+        <span class="status"></span>
+      </header>
+      <p class="copy"></p>
+      <p class="tags"></p>
+      <div class="assets"></div>
+      <footer class="post-foot">
+        <span class="count"></span>
+        <button type="button" class="ghost copy-btn">Copy text</button>
+      </footer>
+    </article>
+  </template>
+
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
