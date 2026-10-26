@@ -1,4 +1,4 @@
-import { loadPosts, addComment, deleteComment, savePost, COMMENT_LIMITS, manilaDate, TIME_ZONE, TIME_ZONE_LABEL, ACCOUNTS } from "./data.js";
+import { loadPosts, addComment, deleteComment, savePost, COMMENT_LIMITS, dateIn, zoneLabel, TIME_ZONE, VIEWER_TIME_ZONE, ACCOUNTS } from "./data.js";
 import { currentUser, signInWithGoogle, signOut, onAuthChange } from "./supabase.js";
 import { openComposer } from "./composer.js";
 import { initThemeToggle } from "./theme.js";
@@ -31,8 +31,29 @@ const els = {
   account: $("account"),
 };
 
-const today = manilaDate(new Date());
-const todayKey = key(today.y, today.m, today.d);
+// Times show in the viewer's own time zone unless they switch to Manila, where posts are planned.
+// Days follow the same zone, so a post sits on the day it goes out for the person reading.
+function storedZone() {
+  try { return localStorage.getItem("timeZone"); } catch { return null; }
+}
+let zone = [TIME_ZONE, VIEWER_TIME_ZONE].includes(storedZone()) ? storedZone() : VIEWER_TIME_ZONE;
+let today, todayKey, timeFmt, dayKeyFmt, commentTimeFmt;
+function setZoneFormats() {
+  today = dateIn(new Date(), zone);
+  todayKey = key(today.y, today.m, today.d);
+  timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: zone, hour: "2-digit", minute: "2-digit" });
+  dayKeyFmt = new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" });
+  commentTimeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: zone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+setZoneFormats();
+
+function setZone(next) {
+  zone = next;
+  try { localStorage.setItem("timeZone", next); } catch { /* lasts this visit */ }
+  setZoneFormats();
+  state.byDay = index(state.posts);
+  render();
+}
 
 const state = {
   posts: [],
@@ -50,14 +71,12 @@ const state = {
 
 const isEditor = () => state.user?.editor === true;
 
-const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: TIME_ZONE, hour: "2-digit", minute: "2-digit" });
-const dayKeyFmt = new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" });
 const monthFmt = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 const longDayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
 const shortDayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", timeZone: "UTC" });
 const rangeFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 
-// Dates are handled as "YYYY-MM-DD" keys in Manila time.
+// Dates are handled as "YYYY-MM-DD" keys in the chosen time zone.
 
 function key(y, m, d) {
   return new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
@@ -169,8 +188,15 @@ function render() {
   const per = (pf) => shown.filter((p) => p.platform === pf).length;
   const sub = [shown.length ? plural(shown.length, "post") : `Nothing planned this ${state.view} yet`];
   if (shown.length && state.platform === "all") sub.push(`${per("x")} on X`, `${per("linkedin")} on LinkedIn`);
-  sub.push(`times in ${TIME_ZONE_LABEL}`);
+  sub.push(`times in ${zone === VIEWER_TIME_ZONE && zone !== TIME_ZONE ? `your time, ${zoneLabel(zone)}` : zoneLabel(zone)}`);
   els.sub.textContent = sub.join(" · ");
+  if (VIEWER_TIME_ZONE !== TIME_ZONE) {
+    const other = zone === TIME_ZONE ? VIEWER_TIME_ZONE : TIME_ZONE;
+    const sw = el("button", "link", other === TIME_ZONE ? "Show Manila time" : "Show my time");
+    sw.type = "button";
+    sw.addEventListener("click", () => setZone(other));
+    els.sub.append(" · ", sw);
+  }
 
   renderStatuses(platformPosts);
   renderGrid(keys);
@@ -391,7 +417,6 @@ function renderPost(post) {
 
 // Comments: anyone can leave one, signed in or not. The name is remembered on this device.
 
-const commentTimeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: TIME_ZONE, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 function rememberedName() {
   try { return localStorage.getItem("commentName") ?? ""; } catch { return ""; }
@@ -486,9 +511,26 @@ function author(platform) {
   avatar.src = "assets/mark.svg";
   avatar.alt = "";
   const who = el("div", "pv-who");
-  who.append(el("span", "pv-name", acc.name), el("span", "pv-handle", acc.handle));
+  const name = el("span", "pv-name", acc.name);
+  if (acc.badge) name.append(badge(platform, acc.badge));
+  who.append(name, el("span", "pv-handle", acc.handle));
   row.append(avatar, who);
   return row;
+}
+
+const BADGE_LABELS = { gold: "Verified organisation", blue: "Verified", grey: "Verified government or official account", verified: "Verified page" };
+
+// X's scalloped check, coloured by type, and LinkedIn's verified shield.
+function badge(platform, kind) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("class", `pv-badge b-${kind}`);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", BADGE_LABELS[kind] ?? "Verified");
+  svg.innerHTML = platform === "x"
+    ? '<path fill="currentColor" d="M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91s-2.52-1.27-3.91-.81c-.66-1.31-1.91-2.19-3.34-2.19s-2.67.88-3.33 2.19c-1.4-.46-2.91-.2-3.92.81s-1.26 2.52-.8 3.91C2.63 9.33 1.75 10.57 1.75 12s.88 2.67 2.2 3.34c-.46 1.39-.21 2.9.8 3.91s2.52 1.26 3.91.81c.67 1.31 1.91 2.19 3.34 2.19s2.68-.88 3.34-2.19c1.39.45 2.9.2 3.91-.81s1.27-2.52.81-3.91c1.31-.67 2.19-1.91 2.19-3.34z"/><path fill="#fff" d="m10.54 16.2-3.75-3.74 1.41-1.42 2.34 2.34 5.29-5.29 1.41 1.42z"/>'
+    : '<path fill="currentColor" d="M12 2 4 5v6.1c0 5 3.4 9.7 8 10.9 4.6-1.2 8-5.9 8-10.9V5z"/><path fill="#fff" d="m10.6 15.4-3.3-3.3 1.4-1.4 1.9 1.9 4.7-4.7 1.4 1.4z"/>';
+  return svg;
 }
 
 function textWithTags(post, node) {
