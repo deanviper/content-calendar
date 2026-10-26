@@ -41,12 +41,11 @@ Without Supabase settings the pages run on sample data, so the front end works o
    `drive.file` scope, so it can see the files it made and nothing else in the Drive. Once:
    - Google Cloud Console → APIs & Services → Library: enable the **Google Drive API** in the
      project that holds the OAuth client.
-   - The OAuth client → **Authorised JavaScript origins**: add the deployed site (and
-     `http://localhost:8000` for local work).
    - Google Workspace must allow link sharing for the editor's account; if it doesn't, the
      composer says so and the file stays private in Drive.
-   The first upload in a visit opens a small Google window to allow Drive access. The client ID
-   is `GOOGLE_CLIENT_ID` in `frontend/src/config.js`. Removing an image moves it to the Drive trash.
+   Drive access comes with the Google sign-in (Supabase requests the scope), so there is no
+   popup. Google's token lasts an hour; an upload after that asks the editor to sign in again and
+   brings the post back once they return. Removing an image moves it to the Drive trash.
 6. **Deploy the collector.**
    ```sh
    supabase functions deploy collect-stats --no-verify-jwt
