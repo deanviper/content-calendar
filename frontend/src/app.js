@@ -1,4 +1,6 @@
-import { loadPosts, addComment, COMMENT_LIMITS, manilaDate, TIME_ZONE, TIME_ZONE_LABEL, ACCOUNTS } from "./data.js";
+import { loadPosts, addComment, deleteComment, savePost, COMMENT_LIMITS, manilaDate, TIME_ZONE, TIME_ZONE_LABEL, ACCOUNTS } from "./data.js";
+import { currentUser, signInWithGoogle, signOut, onAuthChange } from "./supabase.js";
+import { openComposer } from "./composer.js";
 
 const PLATFORMS = {
   x: { name: "X", limit: 280 },
@@ -24,6 +26,8 @@ const els = {
   weeks: $("weeks"),
   gaps: $("gaps"),
   help: $("help"),
+  newPost: $("new-post"),
+  account: $("account"),
 };
 
 const today = manilaDate(new Date());
@@ -39,7 +43,11 @@ const state = {
   // The selected day's week opens into a sheet below it; closing it keeps the selection.
   open: true,
   focusPost: null,
+  // The signed-in editor, if any. Everyone else gets the read-and-comment calendar.
+  user: null,
 };
+
+const isEditor = () => state.user?.editor === true;
 
 const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: TIME_ZONE, hour: "2-digit", minute: "2-digit" });
 const dayKeyFmt = new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" });
@@ -297,6 +305,12 @@ function renderSheet(k) {
   const close = el("button", "pill", "Close");
   close.type = "button";
   close.dataset.close = "";
+  if (isEditor()) {
+    const add = el("button", "pill primary", "New post");
+    add.type = "button";
+    add.dataset.compose = k;
+    tools.prepend(add);
+  }
   tools.append(prev, next, close);
   head.append(title, tools);
   sheet.append(head);
@@ -357,6 +371,18 @@ function renderPost(post) {
     setTimeout(() => { copy.textContent = "Copy text"; }, 1600);
   });
   actions.append(copy);
+  if (isEditor()) {
+    if (post.status === "suggested") {
+      const approve = el("button", "pill", "Approve");
+      approve.type = "button";
+      approve.addEventListener("click", () => approvePost(post, approve));
+      actions.prepend(approve);
+    }
+    const edit = el("button", "pill", "Edit");
+    edit.type = "button";
+    edit.addEventListener("click", () => compose(post));
+    actions.prepend(edit);
+  }
   foot.append(count, actions);
   article.append(foot, renderComments(post));
   return article;
@@ -374,12 +400,28 @@ function rememberName(name) {
   try { localStorage.setItem("commentName", name); } catch { /* private mode: just don't remember */ }
 }
 
-function commentItem(c) {
+function commentItem(c, post) {
   const li = el("li", "comment");
   const meta = el("div", "comment-meta");
   const when = el("time", null, commentTimeFmt.format(new Date(c.createdAt)));
   when.dateTime = c.createdAt;
   meta.append(el("span", "comment-name", c.authorName), when);
+  if (isEditor()) {
+    const rm = el("button", "comment-delete", "Delete");
+    rm.type = "button";
+    rm.setAttribute("aria-label", `Delete ${c.authorName}'s comment`);
+    rm.addEventListener("click", async () => {
+      try {
+        await deleteComment(c.id);
+        post.comments = post.comments.filter((x) => x.id !== c.id);
+        render();
+      } catch (err) {
+        rm.textContent = "Couldn't delete";
+        console.error(err);
+      }
+    });
+    meta.append(rm);
+  }
   li.append(meta, el("p", "comment-body", c.body));
   return li;
 }
@@ -388,7 +430,7 @@ function renderComments(post) {
   const section = el("section", "comments");
   const heading = el("h3", null, post.comments.length ? plural(post.comments.length, "comment") : "Comments");
   const list = el("ol", "comment-list");
-  list.append(...post.comments.map(commentItem));
+  list.append(...post.comments.map((c) => commentItem(c, post)));
 
   const form = el("form", "comment-form");
   const name = el("input", "field");
@@ -420,7 +462,7 @@ function renderComments(post) {
       const c = await addComment(post.id, name.value, body.value);
       rememberName(c.authorName);
       post.comments.push(c);
-      list.append(commentItem(c));
+      list.append(commentItem(c, post));
       heading.textContent = plural(post.comments.length, "comment");
       body.value = "";
     } catch (err) {
@@ -580,6 +622,7 @@ document.addEventListener("keydown", (e) => {
   } else if (k === "t") select(todayKey, { focus: true });
   else if (k === "m") setView("month");
   else if (k === "w") setView("week");
+  else if (k === "n" && isEditor()) compose();
   else if (e.key === "?") els.help.showModal();
 });
 
@@ -614,6 +657,88 @@ window.addEventListener("hashchange", () => {
   if (k && k !== state.selected) select(k);
 });
 
+// Editing (editor only)
+
+function preview(post) {
+  return post.platform === "x" ? previewX(post) : previewLinkedIn(post);
+}
+
+function upsertPost(saved) {
+  state.posts = state.posts.filter((p) => p.id !== saved.id).concat(saved);
+  state.byDay = index(state.posts);
+}
+
+function compose(existing = null, day = state.selected) {
+  openComposer({
+    existing,
+    day,
+    preview,
+    onSaved: (saved) => {
+      upsertPost(saved);
+      select(dayKeyFmt.format(new Date(saved.scheduledAt)), { post: saved.id });
+    },
+    onDeleted: (gone) => {
+      state.posts = state.posts.filter((p) => p.id !== gone.id);
+      state.byDay = index(state.posts);
+      render();
+    },
+  });
+}
+
+async function approvePost(post, button) {
+  button.disabled = true;
+  try {
+    upsertPost(await savePost({ ...post, status: "scheduled" }, { existing: post }));
+    render();
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = "Couldn't approve";
+    console.error(err);
+  }
+}
+
+els.weeks.addEventListener("click", (e) => {
+  const add = e.target.closest("[data-compose]");
+  if (add) compose(null, add.dataset.compose);
+});
+
+els.newPost.addEventListener("click", () => compose());
+
+function renderAccount() {
+  els.newPost.hidden = !isEditor();
+  $("today").classList.toggle("primary", !isEditor());
+  els.account.replaceChildren();
+  if (!state.user) {
+    const b = el("button", "link", "Editor sign-in");
+    b.type = "button";
+    b.addEventListener("click", () => signInWithGoogle().catch((err) => { b.textContent = `Sign-in failed: ${err.message}`; }));
+    els.account.append(b);
+    return;
+  }
+  if (state.user.email === "sample mode") {
+    els.account.append(el("span", null, "Sample mode: editing is on and nothing is saved."));
+    return;
+  }
+  els.account.append(el("span", null, state.user.editor
+    ? `Signed in as ${state.user.email}`
+    : `${state.user.email} can view and comment, but only the editor can post.`));
+  const out = el("button", "link", "Sign out");
+  out.type = "button";
+  out.addEventListener("click", () => signOut());
+  els.account.append(out);
+}
+
+async function refreshUser() {
+  try {
+    state.user = await currentUser();
+  } catch (err) {
+    console.error(err);
+    state.user = null;
+  }
+  renderAccount();
+  render();
+}
+
 // Boot
 
 function index(posts) {
@@ -628,6 +753,8 @@ function index(posts) {
 }
 
 render();
+refreshUser();
+onAuthChange(refreshUser);
 
 loadPosts()
   .then((posts) => {

@@ -32,8 +32,8 @@ export async function loadPosts() {
   const supabase = await db();
   const { data, error } = await supabase
     .from("posts")
-    .select(`id, platform, status, scheduled_at, copy, hashtags,
-      post_assets(type, storage_path, url, name, alt, position),
+    .select(`id, platform, status, scheduled_at, copy, hashtags, external_url,
+      post_assets(id, type, storage_path, url, name, alt, position),
       post_comments(id, author_name, body, created_at)`)
     .order("scheduled_at");
   if (error) throw error;
@@ -54,9 +54,10 @@ export async function loadPosts() {
     scheduledAt: p.scheduled_at,
     copy: p.copy,
     hashtags: p.hashtags ?? [],
+    externalUrl: p.external_url,
     assets: p.post_assets
       .sort((a, b) => a.position - b.position)
-      .map((a) => ({ type: a.type, url: a.url ?? signed.get(a.storage_path), name: a.name, alt: a.alt ?? "" }))
+      .map((a) => ({ id: a.id, type: a.type, url: a.url ?? signed.get(a.storage_path), name: a.name, alt: a.alt ?? "", storagePath: a.storage_path }))
       .filter((a) => a.url),
     comments: p.post_comments
       .map((c) => ({ id: c.id, authorName: c.author_name, body: c.body, createdAt: c.created_at }))
@@ -78,6 +79,87 @@ export async function addComment(postId, authorName, body) {
   if (error) throw new Error(error.message);
   const c = data[0];
   return { id: c.id, authorName: c.author_name, body: c.body, createdAt: c.created_at };
+}
+
+// Writing posts. The database only accepts these from an editor's session; in sample mode they
+// change this visit's copy of the sample posts.
+
+const sampleId = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+function assetType(file) {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("video/")) return "video";
+  return "file";
+}
+
+// post: { id?, platform, status, scheduledAt, copy, hashtags, externalUrl }
+// files: new File objects to attach; removed: ids of existing assets to drop.
+// Returns the saved post in the calendar's shape, comments and kept assets included.
+export async function savePost(post, { files = [], removed = [], existing = null } = {}) {
+  const keptAssets = (existing?.assets ?? []).filter((a) => !removed.includes(a.id));
+
+  if (!configured) {
+    const added = files.map((f) => ({ id: sampleId(), type: assetType(f), url: URL.createObjectURL(f), name: f.name, alt: "" }));
+    return { ...existing, ...post, id: post.id ?? sampleId(), assets: [...keptAssets, ...added], comments: existing?.comments ?? [] };
+  }
+
+  const supabase = await db();
+  const row = {
+    platform: post.platform,
+    status: post.status,
+    scheduled_at: post.scheduledAt,
+    copy: post.copy,
+    hashtags: post.hashtags,
+    external_url: post.externalUrl || null,
+    published_at: post.status === "published" ? post.scheduledAt : null,
+  };
+  const query = post.id
+    ? supabase.from("posts").update(row).eq("id", post.id)
+    : supabase.from("posts").insert(row);
+  const { data: saved, error } = await query.select("id").single();
+  if (error) throw new Error(error.message);
+  const id = saved.id;
+
+  if (removed.length) {
+    const gone = (existing?.assets ?? []).filter((a) => removed.includes(a.id));
+    const { error: e } = await supabase.from("post_assets").delete().in("id", removed);
+    if (e) throw new Error(e.message);
+    const paths = gone.map((a) => a.storagePath).filter(Boolean);
+    if (paths.length) await supabase.storage.from("post-assets").remove(paths);
+  }
+
+  const added = [];
+  let position = keptAssets.length;
+  for (const file of files) {
+    const path = `${id}/${Date.now()}-${file.name.replace(/[^\w.-]+/g, "-")}`;
+    const { error: up } = await supabase.storage.from("post-assets").upload(path, file, { contentType: file.type });
+    if (up) throw new Error(`Uploading ${file.name}: ${up.message}`);
+    const { data: a, error: e } = await supabase.from("post_assets")
+      .insert({ post_id: id, type: assetType(file), storage_path: path, name: file.name, position: position++ })
+      .select("id").single();
+    if (e) throw new Error(e.message);
+    const { data: link } = await supabase.storage.from("post-assets").createSignedUrl(path, 3600);
+    added.push({ id: a.id, type: assetType(file), url: link?.signedUrl, name: file.name, alt: "", storagePath: path });
+  }
+
+  return { ...post, id, assets: [...keptAssets, ...added], comments: existing?.comments ?? [] };
+}
+
+export async function deletePost(post) {
+  if (!configured) return;
+  const supabase = await db();
+  const paths = post.assets.map((a) => a.storagePath).filter(Boolean);
+  const { data, error } = await supabase.from("posts").delete().eq("id", post.id).select("id");
+  if (error) throw new Error(error.message);
+  if (!data.length) throw new Error("Published posts stay for their stats. Change the status first to remove it.");
+  if (paths.length) await supabase.storage.from("post-assets").remove(paths);
+}
+
+export async function deleteComment(id) {
+  if (!configured) return;
+  const supabase = await db();
+  const { error } = await supabase.from("post_comments").delete().eq("id", id);
+  if (error) throw new Error(error.message);
 }
 
 const asset = (file, name, alt) => ({ type: "image", url: `assets/${file}`, name, alt });
