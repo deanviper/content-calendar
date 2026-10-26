@@ -28,7 +28,9 @@ export async function signInWithGoogle() {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: location.href,
+      // Without the "#2026-10-28" day the calendar keeps in the address: Supabase adds the sign-in
+      // to the part after "#", and an address that already has one there loses it.
+      redirectTo: location.origin + location.pathname + location.search,
       // Lets the calendar put photos and videos in the editor's Drive (see drive.js).
       scopes: DRIVE_SCOPE,
       // Pre-selects the editor account in Google's picker; it does not grant anything by itself.
