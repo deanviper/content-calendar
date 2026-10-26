@@ -14,6 +14,8 @@ const API = "https://www.googleapis.com/drive/v3";
 
 let token = null; // { value, expires }
 let gis = null;
+let client = null;  // Google's token client, made once the script has loaded
+let pending = null; // { resolve, reject } for the access request in progress
 let folderId = null;
 
 function loadGis() {
@@ -27,32 +29,48 @@ function loadGis() {
   return gis;
 }
 
-// Starts loading Google's script early, so the sign-in popup can open straight from a click.
+const settle = (fn, value) => {
+  const p = pending;
+  pending = null;
+  p?.[fn](value);
+};
+
+// Loads Google's script and sets up the token client ahead of time, when the composer opens.
+// The access popup then opens in the same moment as the click that asks for it; a popup opened
+// after any waiting is blocked by the browser ("Failed to open popup window").
 export function prepareDrive() {
-  if (GOOGLE_CLIENT_ID) loadGis().catch(() => {});
-}
-
-export const driveReady = () => Boolean(token && token.expires > Date.now() + 60_000);
-
-// Asks for Drive access. Call it from a click: browsers block popups opened later.
-export async function connectDrive() {
-  if (driveReady()) return;
-  const oauth2 = await loadGis();
-  await new Promise((resolve, reject) => {
-    const client = oauth2.initTokenClient({
+  if (!GOOGLE_CLIENT_ID || client) return;
+  loadGis().then((oauth2) => {
+    client ??= oauth2.initTokenClient({
       client_id: GOOGLE_CLIENT_ID,
       scope: SCOPE,
       login_hint: EDITOR_EMAIL,
       hd: EDITOR_EMAIL.split("@")[1],
       callback: (r) => {
-        if (r.error) return reject(new Error(`Google Drive: ${r.error_description ?? r.error}`));
+        if (r.error) return settle("reject", new Error(`Google Drive: ${r.error_description ?? r.error}`));
         token = { value: r.access_token, expires: Date.now() + Number(r.expires_in) * 1000 };
-        resolve();
+        settle("resolve");
       },
-      error_callback: (e) => reject(new Error(e.type === "popup_closed" ? "Drive access was cancelled." : `Google Drive: ${e.message ?? e.type}`)),
+      error_callback: (e) => settle("reject", new Error(
+        e.type === "popup_closed" ? "Drive access was cancelled."
+          : e.type === "popup_failed_to_open" ? "Your browser blocked Google's window. Allow pop-ups for this site and save again."
+            : `Google Drive: ${e.message ?? e.type}`)),
     });
-    client.requestAccessToken({ prompt: "" });
-  });
+  }).catch(() => {});
+}
+
+export const driveReady = () => Boolean(token && token.expires > Date.now() + 60_000);
+
+// Asks for Drive access. Call it directly in a click handler, before anything is awaited.
+export function connectDrive() {
+  if (driveReady()) return Promise.resolve();
+  if (!client) {
+    prepareDrive();
+    return Promise.reject(new Error("Google Drive is still loading. Save again in a moment."));
+  }
+  const request = new Promise((resolve, reject) => { pending = { resolve, reject }; });
+  client.requestAccessToken({ prompt: "" });
+  return request;
 }
 
 async function call(url, init = {}) {
