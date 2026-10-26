@@ -1,109 +1,45 @@
-# content-calendar
+# Silencio content calendar
 
-Silencio's content calendar and post stats for X and LinkedIn.
+The content calendar for Silencio's X and LinkedIn accounts. It shows what we plan to post and what
+has already gone out, with each post drawn the way the platform will show it.
 
-- `frontend/` is a static site with no build step. `/` is the calendar. `/stats/` is the stats page,
-  which nothing links to and search engines are told to skip.
-- `supabase/` holds the database schema, the stats collector function and its schedule.
-- `scripts/import-stats.mjs` loads past stats from a CSV.
+**Live:** [silenciocalendar.vercel.app](https://silenciocalendar.vercel.app)
 
-Who can do what:
+## What it does
 
-- **Anyone with the calendar link** sees the posts and can comment on them, no account needed.
-  Comments are limited to 5 per sender per 10 minutes.
-- **Editors** (emails in `public.editors`, at first just joaquin@silencio.network) sign in with
-  Google to add, edit, approve, move and delete posts, delete comments, and see the stats page.
-- **The collector** writes stats with the service role.
+- **Month and week views** of every post, with a marker on each day that has something planned.
+- **Day view.** Open a day to read its posts as they'll appear on X or LinkedIn, with the copy,
+  hashtags, photos and videos, a character count against the platform's limit, and buttons to copy
+  the text or download the media.
+- **Two states.** A post is a *draft* until it goes live. When it appears on X or LinkedIn, the
+  calendar marks it *posted* on its own and links to it.
+- **Comments.** Anyone with the link can leave feedback on a post, no account needed.
+- **Your time zone.** Times show in each viewer's own zone, with a switch to Manila time, where
+  posts are planned.
+- **Light and dark mode**, following the system setting, with a toggle in the header.
+- **Keyboard shortcuts:** arrows move between days, T jumps to today, M and W switch views, ?
+  lists them all.
 
-Without Supabase settings the pages run on sample data, so the front end works on its own.
+Only Silencio's editor can add or change posts. Everyone else can read and comment.
 
-## Set up Supabase
+## How it's built
 
-1. **Create the schema.** In a Supabase project, apply the migration, either with
-   `supabase link --project-ref <ref>` and `supabase db push`, or by pasting
-   `supabase/migrations/20261026090000_content_calendar.sql` into the SQL editor.
-2. **Make yourself the editor.** Signing up is not enough to edit; the email must be listed:
-   ```sql
-   insert into public.editors (email) values ('you@silencio.network');
-   ```
-   Then turn on Google sign-in (next step).
-3. **Google sign-in.** In Google Cloud Console → APIs & Services → Credentials, create an OAuth
-   client ID of type *Web application*, with this authorised redirect URI:
-   `https://<project-ref>.supabase.co/auth/v1/callback`. Paste its client ID and secret into
-   Supabase → Authentication → Sign In / Providers → Google, and enable it. Under Authentication →
-   URL Configuration, set the deployed site as the Site URL and add it (plus
-   `http://localhost:8000/**` for local work) to the redirect URLs.
-4. **Connect the front end.** Put the project URL and anon key in `frontend/src/config.js`.
-   The anon key is meant to be public: it can read the calendar and add comments, nothing else.
-5. **Photos and videos in Google Drive.** Uploads go to a *Silencio content calendar* folder that
-   the calendar creates in the editor's Google Drive, and each file is shared as "anyone with the
-   link can view" so everyone sees the previews without signing in. The calendar only gets the
-   `drive.file` scope, so it can see the files it made and nothing else in the Drive. Once:
-   - Google Cloud Console → APIs & Services → Library: enable the **Google Drive API** in the
-     project that holds the OAuth client.
-   - Google Workspace must allow link sharing for the editor's account; if it doesn't, the
-     composer says so and the file stays private in Drive.
-   Drive access comes with the Google sign-in (Supabase requests the scope), so there is no
-   popup. Google's token lasts an hour; an upload after that asks the editor to sign in again and
-   brings the post back once they return. Removing an image moves it to the Drive trash.
-6. **Deploy the collector.**
-   ```sh
-   supabase functions deploy collect-stats --no-verify-jwt
-   supabase secrets set COLLECTOR_SECRET=<long random string> \
-     X_BEARER_TOKEN=… X_USERNAME=… \
-     LINKEDIN_ACCESS_TOKEN=… LINKEDIN_ORG_ID=…
-   ```
-   `--no-verify-jwt` is safe because the function checks `x-collector-secret` itself.
-7. **Pull the history once,** which creates past posts and their first snapshots:
-   ```sh
-   curl -X POST "https://<ref>.supabase.co/functions/v1/collect-stats?mode=backfill&since=2026-01-01" \
-     -H "x-collector-secret: <COLLECTOR_SECRET>"
-   ```
-8. **Schedule it.** Run `supabase/schedule.sql` in the SQL editor after filling in its two
-   placeholders. It runs once a day; **Resync now** on the stats page runs it on demand.
+- `frontend/`: a static site in plain JavaScript and CSS, no build step, hosted on Vercel.
+- `supabase/`: the database (Postgres with row level security) and a scheduled function that reads
+  each post's numbers from the X and LinkedIn APIs once a day.
+- Photos and videos are stored in Google Drive.
 
-## How the stats work
-
-Every collector run adds a snapshot per published post (impressions, likes, reposts, replies,
-quotes, bookmarks, clicks) and the follower count per platform. Nothing is overwritten, so:
-
-- a post's **baseline** is its first snapshot, and the stats page shows its growth since then;
-- a **marker** (`stat_markers`) names a moment such as a baseline day or a campaign start. Markers
-  appear on the charts, and the page compares equal windows before and after any marker.
-
-Older numbers the APIs no longer return can be loaded from a CSV; the columns are documented at the
-top of `scripts/import-stats.mjs`:
+## Run it locally
 
 ```sh
-SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/import-stats.mjs past-stats.csv
+cd frontend
+python3 -m http.server 8000    # then open http://localhost:8000
 ```
 
-### What each platform needs
-
-- **X:** an API bearer token for the app and the account's username. Post impressions come from
-  `public_metrics`. The timeline backfill reaches the account's latest 3,200 posts. Reads count
-  against the X plan's monthly cap, so check its limits before collecting more often.
-- **LinkedIn:** a Community Management API token with `r_organization_social` for an admin of the
-  page, plus the page's organization ID. Stats come from `organizationalEntityShareStatistics`.
-
-### Adding posts
-
-Sign in with Google from the link at the bottom of the calendar. As the editor you get a **New
-post** button (or press N), a New post button on each open day, and **Edit** on every post. The
-composer sets the platform, date and time, copy, hashtags, photos and videos, and shows the X or
-LinkedIn preview as you type. Moving a post to another day is a date change in the composer.
-
-A post has two states. It is a **draft** until it goes out; then it is **posted**. Nobody marks
-that by hand: on every run the collector reads the account's recent posts (`DISCOVER_DAYS`,
-default 7) and matches each new one to a draft on the same platform whose words are at least 75%
-the same, from two weeks before its planned day to a month after. The draft then moves to the time
-it went out and gets the live link. Live posts with no matching draft are added as posted. Posted
-posts can't be deleted, so their stats stay intact. Stats appear only on the stats page.
-
-## Develop
+With an empty `SUPABASE_URL` in `frontend/src/config.js`, the calendar runs on sample posts, so
+you can try it without a backend.
 
 ```sh
-cd frontend && python3 -m http.server 8000     # http://localhost:8000 and /stats/
-npm test                                       # importer tests
-deno test supabase/functions/_shared/          # platform client tests
+npm test                                                     # stats importer tests
+DENO_NO_PACKAGE_JSON=1 deno test supabase/functions/_shared/  # platform and matching tests
 ```
