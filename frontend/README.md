@@ -28,14 +28,22 @@ python3 -m http.server 8000
 - `index.html` – page shell
 - `src/styles.css` – all styling; brand colours and the typeface are tokens at the top of the file
 - `src/data.js` – the post shape, the loader and sample posts
+- `src/config.js`, `src/supabase.js` – Supabase settings, client and sign-in
+- `stats/index.html`, `src/stats*.{js,css}` – the stats page
 - `src/app.js` – calendar rendering and interaction
 - `assets/` – the mark and sample post graphics
 
-## Connecting real data
+## Data
 
-`src/data.js` documents the post shape. Set `API_URL` to an endpoint that returns an array of posts in
-that shape and the sample data is no longer used. Times are shown in Manila time (`TIME_ZONE`), and a
-post lands on the day of its `scheduledAt` in that zone.
+`src/data.js` documents the post shape. With the Supabase URL and anon key in `src/config.js`, posts
+come from the `posts` and `post_assets` tables after an email sign-in; without them the calendar
+shows sample posts. Times are shown in Manila time (`TIME_ZONE`), and a post lands on the day of
+its `scheduledAt` in that zone. See the repository README for the backend setup.
+
+## Stats
+
+`stats/` is the stats page at `/stats/`. Nothing links to it. It reads the stats views and
+markers from Supabase (`src/stats-data.js`) and draws its charts in `src/stats.js`.
 
 ## Branding
 

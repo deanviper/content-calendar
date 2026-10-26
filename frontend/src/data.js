@@ -11,10 +11,10 @@
 //     assets: { type: "image" | "video" | "file", url: string, name: string, alt?: string }[]
 //   }
 //
-// Set API_URL to the endpoint once it exists. Until then the calendar renders SAMPLE_POSTS,
-// which are placed relative to the current month so the screen never looks stale.
+// With Supabase configured in config.js the posts come from the posts and post_assets tables.
+// Without it the calendar renders sample posts placed relative to the current month.
 
-export const API_URL = null;
+import { configured, db, signedIn } from "./supabase.js";
 
 export const TIME_ZONE = "Asia/Manila";
 export const TIME_ZONE_LABEL = "Manila, GMT+8";
@@ -26,12 +26,36 @@ export const ACCOUNTS = {
 };
 
 export async function loadPosts() {
-  if (API_URL) {
-    const res = await fetch(API_URL);
-    if (!res.ok) throw new Error(`Posts request failed: ${res.status}`);
-    return res.json();
+  if (!configured) return samplePosts(new Date());
+  await signedIn();
+  const supabase = await db();
+  const { data, error } = await supabase
+    .from("posts")
+    .select("id, platform, status, scheduled_at, copy, hashtags, post_assets(type, storage_path, url, name, alt, position)")
+    .order("scheduled_at");
+  if (error) throw error;
+
+  // Assets in the private bucket are shown through signed links that last an hour.
+  const paths = data.flatMap((p) => p.post_assets.filter((a) => a.storage_path).map((a) => a.storage_path));
+  const signed = new Map();
+  if (paths.length) {
+    const { data: links, error: e } = await supabase.storage.from("post-assets").createSignedUrls(paths, 3600);
+    if (e) throw e;
+    for (const l of links) if (l.signedUrl) signed.set(l.path, l.signedUrl);
   }
-  return samplePosts(new Date());
+
+  return data.map((p) => ({
+    id: p.id,
+    platform: p.platform,
+    status: p.status,
+    scheduledAt: p.scheduled_at,
+    copy: p.copy,
+    hashtags: p.hashtags ?? [],
+    assets: p.post_assets
+      .sort((a, b) => a.position - b.position)
+      .map((a) => ({ type: a.type, url: a.url ?? signed.get(a.storage_path), name: a.name, alt: a.alt ?? "" }))
+      .filter((a) => a.url),
+  }));
 }
 
 const asset = (file, name, alt) => ({ type: "image", url: `assets/${file}`, name, alt });
