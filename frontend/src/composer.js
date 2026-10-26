@@ -3,7 +3,7 @@
 
 import { savePost, deletePost, TIME_ZONE } from "./data.js";
 import { configured, signInWithGoogle } from "./supabase.js";
-import { driveAccess, DriveAccessError } from "./drive.js";
+import { driveAccess, driveProblem, DriveAccessError } from "./drive.js";
 
 // A post being written when the editor has to sign in again for Drive is kept here across the
 // trip to Google and reopened when they come back. Picked files can't be kept, only their text.
@@ -280,7 +280,8 @@ export function openComposer({ existing = null, day, restore = null, preview, on
       try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ draft: d, removed: [...removed] })); } catch { /* the text is lost */ }
       try { await signInWithGoogle(); } catch (err) { msg.textContent = `Sign-in failed: ${err.message}`; }
     });
-    msg.replaceChildren("Uploading needs Google Drive access. ", again,
+    const why = restore ? driveProblem() ?? "The sign-in came back without Google's Drive access." : null;
+    msg.replaceChildren(why ? `${why} ` : "Uploading needs Google Drive access. ", again,
       " and allow Drive when Google asks (tick its box if it shows one). This post comes back after; add the photos and videos again.");
   }
 

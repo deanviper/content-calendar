@@ -32,16 +32,37 @@ export function rememberDriveToken(value) {
   return (checking = check(value));
 }
 
+// Why the last Google token wasn't usable, shown in the composer so a failed sign-in says what
+// Google sent back.
+let problem = null;
+export const driveProblem = () => problem;
+
 async function check(value) {
   try {
     const res = await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${encodeURIComponent(value)}`);
     const info = res.ok ? await res.json() : null;
-    if (!info?.scope?.split(" ").includes(DRIVE_SCOPE)) return forgetDriveToken();
-    sessionStorage.setItem(KEY, JSON.stringify({ value, expires: Date.now() + Number(info.expires_in) * 1000 }));
+    if (!info) {
+      problem = "Google says the sign-in token has expired.";
+    } else if (!info.scope?.split(" ").includes(DRIVE_SCOPE)) {
+      problem = "Google signed you in without Drive access, so the Drive box was probably left unticked.";
+    } else {
+      problem = null;
+      sessionStorage.setItem(KEY, JSON.stringify({ value, expires: Date.now() + Number(info.expires_in) * 1000 }));
+      return;
+    }
   } catch {
-    forgetDriveToken();
+    problem = "Couldn't reach Google to check Drive access.";
   }
+  // A slower check of an older token must not drop a newer one that passed.
+  if (token()?.value === value) forgetDriveToken();
 }
+
+// Google's token also arrives in the page address when a sign-in returns. It is read here, when
+// the page loads, in case the sign-in library has already moved on from it.
+try {
+  const fromUrl = new URLSearchParams(location.hash.slice(location.hash.lastIndexOf("#") + 1)).get("provider_token");
+  if (fromUrl) rememberDriveToken(fromUrl);
+} catch { /* no address to read */ }
 
 export function forgetDriveToken() {
   try { sessionStorage.removeItem(KEY); } catch { /* nothing to forget */ }
