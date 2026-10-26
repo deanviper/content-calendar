@@ -8,15 +8,19 @@
 //     scheduledAt: ISO 8601 string with offset, e.g. "2026-10-28T09:00:00+08:00",
 //     copy: string,            // line breaks are kept
 //     hashtags: string[],      // without the "#"
-//     assets: { type: "image" | "video" | "file", url: string, name: string, alt?: string }[],
+//     assets: { type: "image" | "video" | "file", url: string, name: string, alt?: string,
+//               embed?: string, download?: string }[],   // embed: a video player page
 //     comments: { id: string, authorName: string, body: string, createdAt: string }[]
 //   }
 //
 // With Supabase configured in config.js the posts come from the posts, post_assets and
 // post_comments tables. Anyone with the link can read them and comment, no sign-in needed.
+// Photos and videos are files in the editor's Google Drive (see drive.js); older uploads in the
+// Supabase bucket still show.
 // Without Supabase the calendar renders sample posts placed relative to the current month.
 
 import { configured, db } from "./supabase.js";
+import { uploadToDrive, trashInDrive, driveId, drive } from "./drive.js";
 
 export const TIME_ZONE = "Asia/Manila";
 export const TIME_ZONE_LABEL = "Manila, GMT+8";
@@ -57,13 +61,26 @@ export async function loadPosts() {
     externalUrl: p.external_url,
     assets: p.post_assets
       .sort((a, b) => a.position - b.position)
-      .map((a) => ({ id: a.id, type: a.type, url: a.url ?? signed.get(a.storage_path), name: a.name, alt: a.alt ?? "", storagePath: a.storage_path }))
+      .map((a) => toAsset(a, signed))
       .filter((a) => a.url),
     comments: p.post_comments
       .map((c) => ({ id: c.id, authorName: c.author_name, body: c.body, createdAt: c.created_at }))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
   }));
 }
+
+// A Drive file is shown through links that work without signing in: a thumbnail for the image,
+// Drive's player for a video. Anything else is shown at its own URL.
+function toAsset(a, signed = new Map()) {
+  const base = { id: a.id, type: a.type, name: a.name, alt: a.alt ?? "", storagePath: a.storage_path };
+  const id = driveId(a.url);
+  if (id) {
+    return { ...base, url: drive.image(id), driveUrl: a.url, download: drive.download(id), embed: a.type === "video" ? drive.player(id) : undefined };
+  }
+  return { ...base, url: a.url ?? signed.get(a.storage_path) };
+}
+
+const trashAll = (assets) => Promise.allSettled(assets.filter((a) => a.driveUrl).map((a) => trashInDrive(a.driveUrl)));
 
 export const COMMENT_LIMITS = { name: 60, body: 2000 };
 
@@ -126,20 +143,17 @@ export async function savePost(post, { files = [], removed = [], existing = null
     if (e) throw new Error(e.message);
     const paths = gone.map((a) => a.storagePath).filter(Boolean);
     if (paths.length) await supabase.storage.from("post-assets").remove(paths);
+    await trashAll(gone);
   }
 
   const added = [];
   let position = keptAssets.length;
   for (const file of files) {
-    const path = `${id}/${Date.now()}-${file.name.replace(/[^\w.-]+/g, "-")}`;
-    const { error: up } = await supabase.storage.from("post-assets").upload(path, file, { contentType: file.type });
-    if (up) throw new Error(`Uploading ${file.name}: ${up.message}`);
-    const { data: a, error: e } = await supabase.from("post_assets")
-      .insert({ post_id: id, type: assetType(file), storage_path: path, name: file.name, position: position++ })
-      .select("id").single();
+    const url = await uploadToDrive(file);
+    const row = { post_id: id, type: assetType(file), url, name: file.name, position: position++ };
+    const { data: a, error: e } = await supabase.from("post_assets").insert(row).select("id").single();
     if (e) throw new Error(e.message);
-    const { data: link } = await supabase.storage.from("post-assets").createSignedUrl(path, 3600);
-    added.push({ id: a.id, type: assetType(file), url: link?.signedUrl, name: file.name, alt: "", storagePath: path });
+    added.push(toAsset({ ...row, id: a.id }));
   }
 
   return { ...post, id, assets: [...keptAssets, ...added], comments: existing?.comments ?? [] };
@@ -153,6 +167,7 @@ export async function deletePost(post) {
   if (error) throw new Error(error.message);
   if (!data.length) throw new Error("Published posts stay for their stats. Change the status first to remove it.");
   if (paths.length) await supabase.storage.from("post-assets").remove(paths);
+  await trashAll(post.assets);
 }
 
 export async function deleteComment(id) {

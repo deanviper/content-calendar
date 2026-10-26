@@ -6,6 +6,13 @@
   --good: #7eea9b;
   --bad: #ff9b8a;
 }
+/* Deeper series colours for the light surface (#f4f4f4), checked the same way. */
+:root[data-theme="light"] {
+  --c-x: #a4600c;
+  --c-linkedin: #1b72a6;
+  --good: #1b7f3b;
+  --bad: #b8392a;
+}
 
 .bar > .pill-btn { min-height: 34px; }
 

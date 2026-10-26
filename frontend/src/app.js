@@ -1,6 +1,7 @@
 import { loadPosts, addComment, deleteComment, savePost, COMMENT_LIMITS, manilaDate, TIME_ZONE, TIME_ZONE_LABEL, ACCOUNTS } from "./data.js";
 import { currentUser, signInWithGoogle, signOut, onAuthChange } from "./supabase.js";
 import { openComposer } from "./composer.js";
+import { initThemeToggle } from "./theme.js";
 
 const PLATFORMS = {
   x: { name: "X", limit: 280 },
@@ -354,7 +355,7 @@ function renderPost(post) {
   const actions = el("span", "actions");
   for (const a of post.assets) {
     const dl = el("a", "pill", "Download");
-    dl.href = a.url;
+    dl.href = a.download ?? a.url;
     dl.download = a.name;
     dl.setAttribute("aria-label", `Download ${a.name}`);
     actions.append(dl);
@@ -502,16 +503,33 @@ function textWithTags(post, node) {
   return node;
 }
 
+// Images and videos, up to four, as the platform would lay them out. A Drive video plays in
+// Drive's own player; a video picked in the composer plays from the file.
 function media(post) {
-  const images = post.assets.filter((a) => a.type === "image");
-  if (!images.length) return null;
-  const wrap = el("div", `pv-media n${Math.min(images.length, 4)}`);
-  for (const a of images.slice(0, 4)) {
-    const img = el("img");
-    img.src = a.url;
-    img.alt = a.alt ?? "";
-    img.loading = "lazy";
-    wrap.append(img);
+  const items = post.assets.filter((a) => a.type === "image" || a.type === "video");
+  if (!items.length) return null;
+  const wrap = el("div", `pv-media n${Math.min(items.length, 4)}`);
+  for (const a of items.slice(0, 4)) {
+    let node;
+    if (a.type === "video" && a.embed) {
+      node = el("iframe");
+      node.src = a.embed;
+      node.title = a.alt || a.name;
+      node.allow = "autoplay; fullscreen";
+      node.loading = "lazy";
+    } else if (a.type === "video") {
+      node = el("video");
+      node.src = a.url;
+      node.controls = true;
+      node.preload = "metadata";
+      node.setAttribute("aria-label", a.alt || a.name);
+    } else {
+      node = el("img");
+      node.src = a.url;
+      node.alt = a.alt ?? "";
+      node.loading = "lazy";
+    }
+    wrap.append(node);
   }
   return wrap;
 }
@@ -622,13 +640,14 @@ document.addEventListener("keydown", (e) => {
   } else if (k === "t") select(todayKey, { focus: true });
   else if (k === "m") setView("month");
   else if (k === "w") setView("week");
-  else if (k === "n" && isEditor()) compose();
+  else if (k === "n" && isEditor()) { e.preventDefault(); compose(); }
   else if (e.key === "?") els.help.showModal();
 });
 
 $("prev").addEventListener("click", () => shift(-1));
 $("next").addEventListener("click", () => shift(1));
 $("today").addEventListener("click", () => select(todayKey));
+initThemeToggle($("theme-toggle"));
 $("help-open").addEventListener("click", () => els.help.showModal());
 
 for (const btn of document.querySelectorAll("[data-view]")) {
