@@ -8,13 +8,15 @@
 //     scheduledAt: ISO 8601 string with offset, e.g. "2026-10-28T09:00:00+08:00",
 //     copy: string,            // line breaks are kept
 //     hashtags: string[],      // without the "#"
-//     assets: { type: "image" | "video" | "file", url: string, name: string, alt?: string }[]
+//     assets: { type: "image" | "video" | "file", url: string, name: string, alt?: string }[],
+//     comments: { id: string, authorName: string, body: string, createdAt: string }[]
 //   }
 //
-// With Supabase configured in config.js the posts come from the posts and post_assets tables.
-// Without it the calendar renders sample posts placed relative to the current month.
+// With Supabase configured in config.js the posts come from the posts, post_assets and
+// post_comments tables. Anyone with the link can read them and comment, no sign-in needed.
+// Without Supabase the calendar renders sample posts placed relative to the current month.
 
-import { configured, db, signedIn } from "./supabase.js";
+import { configured, db } from "./supabase.js";
 
 export const TIME_ZONE = "Asia/Manila";
 export const TIME_ZONE_LABEL = "Manila, GMT+8";
@@ -27,11 +29,12 @@ export const ACCOUNTS = {
 
 export async function loadPosts() {
   if (!configured) return samplePosts(new Date());
-  await signedIn();
   const supabase = await db();
   const { data, error } = await supabase
     .from("posts")
-    .select("id, platform, status, scheduled_at, copy, hashtags, post_assets(type, storage_path, url, name, alt, position)")
+    .select(`id, platform, status, scheduled_at, copy, hashtags,
+      post_assets(type, storage_path, url, name, alt, position),
+      post_comments(id, author_name, body, created_at)`)
     .order("scheduled_at");
   if (error) throw error;
 
@@ -55,7 +58,26 @@ export async function loadPosts() {
       .sort((a, b) => a.position - b.position)
       .map((a) => ({ type: a.type, url: a.url ?? signed.get(a.storage_path), name: a.name, alt: a.alt ?? "" }))
       .filter((a) => a.url),
+    comments: p.post_comments
+      .map((c) => ({ id: c.id, authorName: c.author_name, body: c.body, createdAt: c.created_at }))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
   }));
+}
+
+export const COMMENT_LIMITS = { name: 60, body: 2000 };
+
+// Saves a comment and returns it. Sample posts keep comments for this visit only.
+export async function addComment(postId, authorName, body) {
+  const name = authorName.trim();
+  const text = body.trim();
+  if (!name) throw new Error("Add your name so people know who commented.");
+  if (!text) throw new Error("Write a comment first.");
+  if (!configured) return { id: `local-${Date.now()}`, authorName: name, body: text, createdAt: new Date().toISOString() };
+  const supabase = await db();
+  const { data, error } = await supabase.rpc("add_comment", { p_post_id: postId, p_author_name: name, p_body: text });
+  if (error) throw new Error(error.message);
+  const c = data[0];
+  return { id: c.id, authorName: c.author_name, body: c.body, createdAt: c.created_at };
 }
 
 const asset = (file, name, alt) => ({ type: "image", url: `assets/${file}`, name, alt });
@@ -82,6 +104,11 @@ const SAMPLE = [
   [22, "x", "scheduled", "12:00", "Community call this Thursday. Bring questions about rewards, the app and the roadmap.", ["Silencio"], []],
 ];
 
+const SAMPLE_COMMENTS = {
+  6: [{ id: "c1", authorName: "Anton", body: "Love the line. Can we add the venue count?", createdAt: "2026-10-25T09:12:00+08:00" }],
+  7: [{ id: "c2", authorName: "Mia", body: "Maybe end with a question to get replies?", createdAt: "2026-10-25T14:40:00+08:00" }],
+};
+
 function samplePosts(now) {
   const today = manilaDate(now);
   return SAMPLE.map(([offset, platform, status, time, copy, hashtags, assets], i) => {
@@ -96,6 +123,7 @@ function samplePosts(now) {
       copy,
       hashtags,
       assets,
+      comments: SAMPLE_COMMENTS[i] ?? [],
     };
   });
 }

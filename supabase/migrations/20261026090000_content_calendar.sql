@@ -5,12 +5,13 @@
 -- post_metric_snapshots     a post's numbers at a moment; collected repeatedly, never overwritten
 -- account_metric_snapshots  follower counts per platform over time
 -- stat_markers              named points in time to compare against ("baseline", "campaign start")
+-- post_comments             feedback on a post from anyone with the calendar link
 --
 -- Every snapshot is kept, so the first one for a post is its baseline and any later one can be
--- compared with it or with a marker. Reads and planning writes are for listed team members;
--- snapshots are written only by the collector, which uses the service role.
+-- compared with it or with a marker. Anyone with the link can read the calendar and comment;
+-- only listed editors add posts or see stats; snapshots are written only by the collector.
 
-create extension if not exists pgcrypto;
+create extension if not exists pgcrypto with schema extensions;
 
 create type public.platform as enum ('x', 'linkedin');
 create type public.post_status as enum ('draft', 'suggested', 'scheduled', 'published');
@@ -187,70 +188,125 @@ select distinct on (platform, (captured_at at time zone 'Asia/Manila')::date)
 from public.account_metric_snapshots
 order by platform, (captured_at at time zone 'Asia/Manila')::date, captured_at desc;
 
--- Who counts as the team. Supabase lets anyone create an account by default, so being signed in
--- is not enough: the email must be listed here. Add people with
---   insert into public.team_members (email) values ('name@example.com');
+-- Comments: anyone with the calendar link can leave one, no account needed.
 
-create table public.team_members (
+create table public.post_comments (
+  id           uuid primary key default gen_random_uuid(),
+  post_id      uuid not null references public.posts (id) on delete cascade,
+  author_name  text not null check (length(btrim(author_name)) between 1 and 60),
+  body         text not null check (length(btrim(body)) between 1 and 2000),
+  -- A hash of the sender's IP, kept only to rate-limit comments.
+  sender       text,
+  created_at   timestamptz not null default now()
+);
+
+create index post_comments_post_idx on public.post_comments (post_id, created_at);
+create index post_comments_sender_idx on public.post_comments (sender, created_at);
+
+-- Who may edit. Supabase lets anyone create an account, so being signed in is not enough:
+-- the email must be listed here. Add yourself with
+--   insert into public.editors (email) values ('you@silencio.network');
+
+create table public.editors (
   email      text primary key check (email = lower(email)),
   added_at   timestamptz not null default now()
 );
 
-alter table public.team_members enable row level security;
+alter table public.editors enable row level security;
 
-create or replace function public.is_team() returns boolean
+create or replace function public.is_editor() returns boolean
 language sql stable security definer set search_path = '' as $$
   select exists (
-    select 1 from public.team_members
+    select 1 from public.editors
     where email = lower(coalesce(auth.jwt() ->> 'email', ''))
   );
 $$;
 
-revoke execute on function public.is_team() from public;
-grant execute on function public.is_team() to authenticated;
+revoke execute on function public.is_editor() from public;
+grant execute on function public.is_editor() to anon, authenticated;
 
-create policy "members see the team list" on public.team_members for select to authenticated
-  using (public.is_team());
+create policy "editors see the editor list" on public.editors for select to authenticated
+  using (public.is_editor());
 
--- Row level security: team members read everything and plan posts and markers.
+-- Comments go in through this function rather than a direct insert, so names and text are
+-- trimmed and one sender cannot post more than 5 comments in 10 minutes.
+create or replace function public.add_comment(p_post_id uuid, p_author_name text, p_body text)
+returns table (id uuid, post_id uuid, author_name text, body text, created_at timestamptz)
+language plpgsql security definer set search_path = '' as $$
+declare
+  headers json := coalesce(nullif(current_setting('request.headers', true), ''), '{}')::json;
+  ip text := btrim(split_part(coalesce(headers ->> 'x-forwarded-for', headers ->> 'x-real-ip', ''), ',', 1));
+  who text := encode(extensions.digest(coalesce(nullif(ip, ''), 'unknown'), 'sha256'), 'hex');
+  recent int;
+begin
+  if not exists (select 1 from public.posts p where p.id = p_post_id) then
+    raise exception 'That post no longer exists' using errcode = 'P0002';
+  end if;
+  select count(*) into recent from public.post_comments c
+  where c.sender = who and c.created_at > now() - interval '10 minutes';
+  if recent >= 5 then
+    raise exception 'Too many comments in a short time. Try again in a few minutes.' using errcode = 'P0001';
+  end if;
+  return query
+    insert into public.post_comments as c (post_id, author_name, body, sender)
+    values (p_post_id, btrim(p_author_name), btrim(p_body), who)
+    returning c.id, c.post_id, c.author_name, c.body, c.created_at;
+end;
+$$;
+
+revoke execute on function public.add_comment(uuid, text, text) from public;
+grant execute on function public.add_comment(uuid, text, text) to anon, authenticated;
+
+-- Row level security.
+--   Everyone, signed in or not: reads posts, their assets and comments; comments via add_comment.
+--   Editors: write posts and assets, delete comments, and read the stats and markers.
+--   The collector: writes stats with the service role, which bypasses these rules.
 
 alter table public.posts enable row level security;
 alter table public.post_assets enable row level security;
+alter table public.post_comments enable row level security;
 alter table public.post_metric_snapshots enable row level security;
 alter table public.account_metric_snapshots enable row level security;
 alter table public.stat_markers enable row level security;
 
-create policy "team reads posts" on public.posts for select to authenticated using (public.is_team());
-create policy "team writes posts" on public.posts for insert to authenticated with check (public.is_team());
-create policy "team edits posts" on public.posts for update to authenticated using (public.is_team()) with check (public.is_team());
-create policy "team deletes unpublished posts" on public.posts for delete to authenticated using (public.is_team() and status <> 'published');
+create policy "anyone reads posts" on public.posts for select to anon, authenticated using (true);
+create policy "editors add posts" on public.posts for insert to authenticated with check (public.is_editor());
+create policy "editors edit posts" on public.posts for update to authenticated using (public.is_editor()) with check (public.is_editor());
+create policy "editors delete unpublished posts" on public.posts for delete to authenticated using (public.is_editor() and status <> 'published');
 
-create policy "team reads assets" on public.post_assets for select to authenticated using (public.is_team());
-create policy "team writes assets" on public.post_assets for insert to authenticated with check (public.is_team());
-create policy "team edits assets" on public.post_assets for update to authenticated using (public.is_team()) with check (public.is_team());
-create policy "team deletes assets" on public.post_assets for delete to authenticated using (public.is_team());
+create policy "anyone reads assets" on public.post_assets for select to anon, authenticated using (true);
+create policy "editors add assets" on public.post_assets for insert to authenticated with check (public.is_editor());
+create policy "editors edit assets" on public.post_assets for update to authenticated using (public.is_editor()) with check (public.is_editor());
+create policy "editors delete assets" on public.post_assets for delete to authenticated using (public.is_editor());
 
-create policy "team reads post stats" on public.post_metric_snapshots for select to authenticated using (public.is_team());
-create policy "team reads account stats" on public.account_metric_snapshots for select to authenticated using (public.is_team());
+-- The sender hash stays out of public reads: anon and signed-in readers get every column but it.
+revoke select on public.post_comments from anon, authenticated;
+grant select (id, post_id, author_name, body, created_at) on public.post_comments to anon, authenticated;
+create policy "anyone reads comments" on public.post_comments for select to anon, authenticated using (true);
+create policy "editors delete comments" on public.post_comments for delete to authenticated using (public.is_editor());
 
-create policy "team reads markers" on public.stat_markers for select to authenticated using (public.is_team());
-create policy "team adds markers" on public.stat_markers for insert to authenticated with check (public.is_team());
-create policy "authors edit markers" on public.stat_markers for update to authenticated
-  using (public.is_team() and created_by = auth.uid()) with check (public.is_team() and created_by = auth.uid());
-create policy "authors delete markers" on public.stat_markers for delete to authenticated
-  using (public.is_team() and created_by = auth.uid());
+create policy "editors read post stats" on public.post_metric_snapshots for select to authenticated using (public.is_editor());
+create policy "editors read account stats" on public.account_metric_snapshots for select to authenticated using (public.is_editor());
 
--- Storage: a private bucket for post assets, readable by the team through signed URLs.
+create policy "editors read markers" on public.stat_markers for select to authenticated using (public.is_editor());
+create policy "editors add markers" on public.stat_markers for insert to authenticated with check (public.is_editor());
+create policy "editors edit markers" on public.stat_markers for update to authenticated
+  using (public.is_editor()) with check (public.is_editor());
+create policy "editors delete markers" on public.stat_markers for delete to authenticated
+  using (public.is_editor());
+
+-- Storage: post assets are viewable through signed links by anyone who can see the calendar;
+-- only editors upload or change them.
 
 insert into storage.buckets (id, name, public)
 values ('post-assets', 'post-assets', false)
 on conflict (id) do nothing;
 
-create policy "team reads post assets" on storage.objects for select to authenticated
-  using (bucket_id = 'post-assets' and public.is_team());
-create policy "team uploads post assets" on storage.objects for insert to authenticated
-  with check (bucket_id = 'post-assets' and public.is_team());
-create policy "team replaces post assets" on storage.objects for update to authenticated
-  using (bucket_id = 'post-assets' and public.is_team());
-create policy "team removes post assets" on storage.objects for delete to authenticated
-  using (bucket_id = 'post-assets' and public.is_team());
+create policy "anyone reads post assets" on storage.objects for select to anon, authenticated
+  using (bucket_id = 'post-assets');
+create policy "editors upload post assets" on storage.objects for insert to authenticated
+  with check (bucket_id = 'post-assets' and public.is_editor());
+create policy "editors replace post assets" on storage.objects for update to authenticated
+  using (bucket_id = 'post-assets' and public.is_editor());
+create policy "editors remove post assets" on storage.objects for delete to authenticated
+  using (bucket_id = 'post-assets' and public.is_editor());

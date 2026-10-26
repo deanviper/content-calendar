@@ -1,4 +1,4 @@
-import { loadPosts, manilaDate, TIME_ZONE, TIME_ZONE_LABEL, ACCOUNTS } from "./data.js";
+import { loadPosts, addComment, COMMENT_LIMITS, manilaDate, TIME_ZONE, TIME_ZONE_LABEL, ACCOUNTS } from "./data.js";
 
 const PLATFORMS = {
   x: { name: "X", limit: 280 },
@@ -337,8 +337,81 @@ function renderPost(post) {
   });
   actions.append(copy);
   foot.append(count, actions);
-  card.append(foot);
+  card.append(foot, renderComments(post));
   return card;
+}
+
+// Comments: anyone can leave one, signed in or not. The name is remembered on this device.
+
+const commentTimeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: TIME_ZONE, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+function rememberedName() {
+  try { return localStorage.getItem("commentName") ?? ""; } catch { return ""; }
+}
+
+function rememberName(name) {
+  try { localStorage.setItem("commentName", name); } catch { /* private mode: just don't remember */ }
+}
+
+function commentItem(c) {
+  const li = el("li", "comment");
+  const meta = el("div", "comment-meta");
+  const when = el("time", null, commentTimeFmt.format(new Date(c.createdAt)));
+  when.dateTime = c.createdAt;
+  meta.append(el("span", "comment-name", c.authorName), when);
+  li.append(meta, el("p", "comment-body", c.body));
+  return li;
+}
+
+function renderComments(post) {
+  const section = el("details", "comments");
+  if (post.comments.length) section.open = true;
+  const summary = el("summary", null, post.comments.length ? plural(post.comments.length, "comment") : "Add a comment");
+  const list = el("ol", "comment-list");
+  list.append(...post.comments.map(commentItem));
+
+  const form = el("form", "comment-form");
+  const name = el("input", "field");
+  name.name = "name";
+  name.placeholder = "Your name";
+  name.autocomplete = "name";
+  name.maxLength = COMMENT_LIMITS.name;
+  name.required = true;
+  name.value = rememberedName();
+  name.setAttribute("aria-label", "Your name");
+  const body = el("textarea", "field");
+  body.name = "body";
+  body.rows = 2;
+  body.placeholder = "What should change?";
+  body.maxLength = COMMENT_LIMITS.body;
+  body.required = true;
+  body.setAttribute("aria-label", "Comment");
+  const send = el("button", "pill-btn primary", "Comment");
+  send.type = "submit";
+  const msg = el("p", "comment-msg");
+  msg.setAttribute("role", "status");
+  form.append(name, body, send, msg);
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    send.disabled = true;
+    msg.textContent = "";
+    try {
+      const c = await addComment(post.id, name.value, body.value);
+      rememberName(c.authorName);
+      post.comments.push(c);
+      list.append(commentItem(c));
+      summary.textContent = plural(post.comments.length, "comment");
+      body.value = "";
+    } catch (err) {
+      msg.textContent = err.message;
+    } finally {
+      send.disabled = false;
+    }
+  });
+
+  section.append(summary, list, form);
+  return section;
 }
 
 // Previews drawn the way each network lays a post out, so copy is judged in place.

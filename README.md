@@ -7,6 +7,14 @@ Silencio's content calendar and post stats for X and LinkedIn.
 - `supabase/` holds the database schema, the stats collector function and its schedule.
 - `scripts/import-stats.mjs` loads past stats from a CSV.
 
+Who can do what:
+
+- **Anyone with the calendar link** sees the posts and can comment on them, no account needed.
+  Comments are limited to 5 per sender per 10 minutes.
+- **Editors** (emails in `public.editors`, at first just you) add and edit posts, delete
+  comments, and see the stats page after an email sign-in.
+- **The collector** writes stats with the service role.
+
 Without Supabase settings the pages run on sample data, so the front end works on its own.
 
 ## Set up Supabase
@@ -14,14 +22,14 @@ Without Supabase settings the pages run on sample data, so the front end works o
 1. **Create the schema.** In a Supabase project, apply the migration, either with
    `supabase link --project-ref <ref>` and `supabase db push`, or by pasting
    `supabase/migrations/20261026090000_content_calendar.sql` into the SQL editor.
-2. **Add the team.** Only listed emails can read or write anything:
+2. **Make yourself the editor.** Signing up is not enough to edit; the email must be listed:
    ```sql
-   insert into public.team_members (email) values ('you@silencio.network');
+   insert into public.editors (email) values ('you@silencio.network');
    ```
-   Under Authentication → URL Configuration, add the site's address as a redirect URL so the
-   sign-in links work.
+   Under Authentication → URL Configuration, set the site's address as the Site URL so the
+   sign-in links for the stats page work.
 3. **Connect the front end.** Put the project URL and anon key in `frontend/src/config.js`.
-   The anon key is meant to be public; row level security limits it to team members.
+   The anon key is meant to be public: it can read the calendar and add comments, nothing else.
 4. **Deploy the collector.**
    ```sh
    supabase functions deploy collect-stats --no-verify-jwt
@@ -61,6 +69,14 @@ SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/import-stats.mjs pas
   against the X plan's monthly cap, so check its limits before collecting more often.
 - **LinkedIn:** a Community Management API token with `r_organization_social` for an admin of the
   page, plus the page's organization ID. Stats come from `organizationalEntityShareStatistics`.
+
+### Adding posts
+
+Until the calendar has its own composer, add posts in the dashboard: Table Editor → `posts` →
+Insert row (`platform`, `status`, `scheduled_at` with `+08:00`, `copy`, `hashtags` like
+`{DePIN,Silencio}`). For images, upload to Storage → `post-assets` and add a `post_assets` row with
+the post's `id`, the file's `storage_path` and a `name`. A CSV of drafts can be imported into
+`posts` from the Table Editor too.
 
 Planned posts are linked to their live versions by setting `external_id` (the tweet ID, or the
 LinkedIn `urn:li:share:…`) when they go out. Posts the backfill finds are added as new published
