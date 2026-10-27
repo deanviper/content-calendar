@@ -11,6 +11,8 @@ has already gone out, with each post drawn the way the platform will show it.
 - **Day view.** Open a day to read its posts as they'll appear on X or LinkedIn, with the copy,
   hashtags, photos and videos, a character count against the platform's limit, and buttons to copy
   the text or download the media.
+- **X threads.** Add follow-up tweets to an X post, each with its own character count; the preview
+  shows them joined the way X does, with a Copy button for each tweet.
 - **Two states.** A post is a *draft* until it goes live. When it appears on X or LinkedIn, the
   calendar marks it *posted* on its own and links to it.
 - **Comments.** Anyone with the link can leave feedback on a post, no account needed.

@@ -329,6 +329,14 @@ textarea.field { padding: 10px 14px; resize: vertical; }
 .pv-li .pv-avatar { border-radius: 8px; }
 .pv-who { display: flex; flex-direction: column; line-height: 1.25; }
 .pv-x .pv-who { flex-direction: row; gap: 6px; align-items: baseline; }
+/* Threads: a line runs from each tweet's avatar down to the next tweet's. */
+.pv-tweet { position: relative; }
+.pv-has-thread .pv-tweet { padding-bottom: 16px; }
+.pv-has-thread .pv-tweet:not(:last-child)::before { content: ""; position: absolute; left: 17px; top: 42px; bottom: -2px; width: 2px; border-radius: 1px; background: var(--line-strong); }
+.pv-has-thread .pv-tweet > :not(.pv-author) { margin-left: 46px; }
+.pv-has-thread .pv-tweet:last-child { padding-bottom: 0; }
+.pv-copy { padding: 0; margin-top: 6px; border: 0; background: none; color: var(--ink-3); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
+.pv-copy:hover { color: var(--ink); }
 .pv-name { display: inline-flex; align-items: center; gap: 3px; font-weight: 600; font-size: 14px; }
 /* Platform colours, as the platforms show them. */
 .pv-badge { width: 16px; height: 16px; flex: none; }
@@ -499,6 +507,12 @@ kbd {
 .cf textarea { min-height: 160px; font-size: 15px; line-height: 1.5; }
 .cf-hint { font-size: 12px; color: var(--ink-3); }
 .cf-hint.over { color: var(--warn); }
+.cf-thread { display: grid; gap: 10px; justify-items: start; }
+.cf-reply { position: relative; display: grid; gap: 6px; width: 100%; padding-left: 18px; }
+/* The line X draws between the tweets of a thread. */
+.cf-reply::before { content: ""; position: absolute; left: 5px; top: -10px; bottom: 6px; width: 2px; border-radius: 1px; background: var(--line-strong); }
+.cf-reply-remove { position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; border: 0; border-radius: 999px; background: var(--surface); color: var(--ink-2); }
+.cf-reply-remove:hover { color: var(--ink); }
 .cf-msg { margin: 0; font-size: 13px; color: var(--warn); }
 .cf-msg:empty { display: none; }
 
