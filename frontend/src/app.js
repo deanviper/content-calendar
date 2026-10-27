@@ -354,13 +354,18 @@ function renderPost(post) {
   article.append(meta, post.platform === "x" ? previewX(post) : previewLinkedIn(post));
 
   const length = fullText(post).length;
+  const thread = post.platform === "x" ? post.thread ?? [] : [];
   const foot = el("footer", "post-foot");
   const count = el("span", "count");
+  const longReply = thread.findIndex((t) => t.length > platform.limit);
   if (length > platform.limit) {
     count.classList.add("over");
     count.textContent = `${length - platform.limit} characters over the ${platform.limit} limit`;
+  } else if (longReply >= 0) {
+    count.classList.add("over");
+    count.textContent = `Tweet ${longReply + 2} is ${thread[longReply].length - platform.limit} over the ${platform.limit} limit`;
   } else {
-    count.textContent = `${length} / ${platform.limit}`;
+    count.textContent = thread.length ? `${length} / ${platform.limit} · thread of ${thread.length + 1}` : `${length} / ${platform.limit}`;
   }
   const actions = el("span", "actions");
   for (const a of post.assets) {
@@ -377,7 +382,8 @@ function renderPost(post) {
     live.rel = "noopener";
     actions.append(live);
   }
-  const copy = el("button", "pill primary", "Copy text");
+  const copyLabel = thread.length ? "Copy first tweet" : "Copy text";
+  const copy = el("button", "pill primary", copyLabel);
   copy.type = "button";
   copy.addEventListener("click", async () => {
     try {
@@ -386,7 +392,7 @@ function renderPost(post) {
     } catch {
       copy.textContent = "Copy failed";
     }
-    setTimeout(() => { copy.textContent = "Copy text"; }, 1600);
+    setTimeout(() => { copy.textContent = copyLabel; }, 1600);
   });
   actions.append(copy);
   if (isEditor()) {
@@ -561,11 +567,36 @@ function media(post) {
   return wrap;
 }
 
+// An X post, and its thread below it the way X shows one: each reply under the first tweet, joined
+// by a line from the avatar. Replies have their own Copy, since each one is posted separately.
 function previewX(post) {
   const pv = el("div", "preview pv-x");
-  pv.append(author("x"), textWithTags(post, el("p", "pv-text")));
+  const thread = post.thread ?? [];
+  const first = el("div", "pv-tweet");
+  first.append(author("x"), textWithTags(post, el("p", "pv-text")));
   const m = media(post);
-  if (m) pv.append(m);
+  if (m) first.append(m);
+  pv.append(first);
+  if (!thread.length) return pv;
+  pv.classList.add("pv-has-thread");
+  thread.forEach((text, i) => {
+    const tweet = el("div", "pv-tweet pv-reply");
+    const body = el("p", "pv-text", text);
+    const copy = el("button", "pv-copy", "Copy");
+    copy.type = "button";
+    copy.setAttribute("aria-label", `Copy tweet ${i + 2}`);
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        copy.textContent = "Copied";
+      } catch {
+        copy.textContent = "Copy failed";
+      }
+      setTimeout(() => { copy.textContent = "Copy"; }, 1600);
+    });
+    tweet.append(author("x"), body, copy);
+    pv.append(tweet);
+  });
   return pv;
 }
 

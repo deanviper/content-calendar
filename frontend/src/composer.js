@@ -110,6 +110,37 @@ export function openComposer({ existing = null, day, restore = null, preview, on
   copy.value = base?.copy ?? "";
   const count = el("span", "cf-hint");
 
+  // X threads: follow-up tweets that go out as replies to the first one, like X's own "+" button.
+  const thread = el("div", "cf-thread");
+  const addTweet = el("button", "pill", "Add a tweet to the thread");
+  addTweet.type = "button";
+  const replies = [];
+  function addReply(text = "", focus = false) {
+    const row = el("div", "cf-reply");
+    const area = el("textarea", "field");
+    area.rows = 3;
+    area.placeholder = "Add another tweet";
+    area.value = text;
+    area.setAttribute("aria-label", `Tweet ${replies.length + 2} in the thread`);
+    const n = el("span", "cf-hint");
+    const rm = el("button", "cf-reply-remove", "×");
+    rm.type = "button";
+    rm.setAttribute("aria-label", "Remove this tweet from the thread");
+    rm.addEventListener("click", () => {
+      replies.splice(replies.findIndex((r) => r.area === area), 1);
+      row.remove();
+      refresh();
+    });
+    row.append(area, rm, n);
+    replies.push({ area, n });
+    thread.insertBefore(row, addTweet);
+    if (focus) area.focus();
+  }
+  thread.append(addTweet);
+  addTweet.addEventListener("click", () => { addReply("", true); refresh(); });
+  for (const t of base?.thread ?? []) addReply(t);
+  const threadField = field("Thread", thread, null, "div");
+
   const tags = el("input", "field");
   tags.placeholder = "VoiceAI, Datasets";
   tags.value = (base?.hashtags ?? []).join(", ");
@@ -158,6 +189,7 @@ export function openComposer({ existing = null, day, restore = null, preview, on
     field("Platform", platform, null, "div"),
     when,
     field("Copy", copy, count),
+    threadField,
     field("Hashtags", tags),
     field("Photos and videos", assets, configured ? el("span", "cf-hint", "Saved to the Silencio content calendar folder in your Google Drive, shared by link so everyone can preview them.") : null, "div"),
     msg,
@@ -186,6 +218,7 @@ export function openComposer({ existing = null, day, restore = null, preview, on
       scheduledAt: `${date.value}T${time.value || "09:00"}:00+08:00`,
       copy: copy.value.trim(),
       hashtags: parseTags(tags.value),
+      thread: platform.value() === "x" ? replies.map((r) => r.area.value.trim()).filter(Boolean) : [],
       externalUrl: existing?.externalUrl ?? "",
       assets: [...keep, ...fresh],
     };
@@ -197,6 +230,13 @@ export function openComposer({ existing = null, day, restore = null, preview, on
     const length = (d.hashtags.length ? `${d.copy}\n\n${d.hashtags.map((t) => `#${t}`).join(" ")}` : d.copy).length;
     count.textContent = length > limit ? `${length - limit} over the ${limit} limit` : `${length} / ${limit}`;
     count.classList.toggle("over", length > limit);
+    threadField.hidden = d.platform !== "x";
+    for (const r of replies) {
+      const len = r.area.value.trim().length;
+      r.n.textContent = len > limit ? `${len - limit} over the ${limit} limit` : `${len} / ${limit}`;
+      r.n.classList.toggle("over", len > limit);
+    }
+    addTweet.textContent = replies.length ? "Add another tweet" : "Add a tweet to the thread";
 
     assets.replaceChildren();
     for (const a of existing?.assets ?? []) {

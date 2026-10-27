@@ -8,6 +8,7 @@
 //     scheduledAt: ISO 8601 string with offset, e.g. "2026-10-28T09:00:00+08:00",
 //     copy: string,            // line breaks are kept
 //     hashtags: string[],      // without the "#"
+//     thread: string[],        // X only: follow-up tweets posted as replies to the first, in order
 //     assets: { type: "image" | "video" | "file", url: string, name: string, alt?: string,
 //               embed?: string, download?: string }[],   // embed: a video player page
 //     comments: { id: string, authorName: string, body: string, createdAt: string }[]
@@ -35,12 +36,15 @@ export const ACCOUNTS = {
 export async function loadPosts() {
   if (!configured) return samplePosts(new Date());
   const supabase = await db();
-  const { data, error } = await supabase
+  const select = (thread) => supabase
     .from("posts")
-    .select(`id, platform, status, scheduled_at, copy, hashtags, external_url,
+    .select(`id, platform, status, scheduled_at, copy, hashtags, external_url,${thread ? " thread," : ""}
       post_assets(id, type, storage_path, url, name, alt, position),
       post_comments(id, author_name, body, created_at)`)
     .order("scheduled_at");
+  let { data, error } = await select(true);
+  // Until the thread migration has run, the column is missing; the calendar still loads without it.
+  if (error && isMissingThread(error)) ({ data, error } = await select(false));
   if (error) throw error;
 
   // Assets in the private bucket are shown through signed links that last an hour.
@@ -60,6 +64,7 @@ export async function loadPosts() {
     scheduledAt: p.scheduled_at,
     copy: p.copy,
     hashtags: p.hashtags ?? [],
+    thread: p.thread ?? [],
     externalUrl: p.external_url,
     assets: p.post_assets
       .sort((a, b) => a.position - b.position)
@@ -70,6 +75,8 @@ export async function loadPosts() {
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
   }));
 }
+
+const isMissingThread = (error) => error.code === "42703" || /thread/.test(error.message ?? "") && /column|schema/.test(error.message ?? "");
 
 // A Drive file is shown through links that work without signing in: a thumbnail for the image,
 // Drive's player for a video. Anything else is shown at its own URL.
@@ -133,12 +140,15 @@ export async function savePost(post, { files = [], removed = [], existing = null
     scheduled_at: post.scheduledAt,
     copy: post.copy,
     hashtags: post.hashtags,
+    // Sent only when there is a thread to save or clear, so posts save before the migration too.
+    ...(post.thread?.length || existing?.thread?.length ? { thread: post.platform === "x" ? post.thread ?? [] : [] } : {}),
     // external_url and published_at are the collector's to set when it finds the live post.
   };
   const query = post.id
     ? supabase.from("posts").update(row).eq("id", post.id)
     : supabase.from("posts").insert(row);
   const { data: saved, error } = await query.select("id").single();
+  if (error && isMissingThread(error)) throw new Error("threads need the post_threads migration run in Supabase first");
   if (error) throw new Error(error.message);
   const id = saved.id;
 
@@ -210,6 +220,13 @@ const SAMPLE_COMMENTS = {
   7: [{ id: "c2", authorName: "Sam", body: "Love this one. Maybe pin it?", createdAt: "2026-10-25T14:40:00+08:00" }],
 };
 
+const SAMPLE_THREADS = {
+  12: [
+    "Off-the-shelf ASR drops sharply on accented and code-switched speech. Native speakers hear what a model misses: the Taglish mid-sentence, the market noise, the regional word.",
+    "So every hour we deliver is transcribed by people who speak it, checked in more than one pass, and consent-cleared at the source.",
+  ],
+};
+
 function samplePosts(now) {
   const today = manilaDate(now);
   return SAMPLE.map(([offset, platform, status, time, copy, hashtags, assets], i) => {
@@ -224,6 +241,7 @@ function samplePosts(now) {
       copy,
       hashtags,
       assets,
+      thread: SAMPLE_THREADS[i] ?? [],
       comments: SAMPLE_COMMENTS[i] ?? [],
     };
   });
