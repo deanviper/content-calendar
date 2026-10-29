@@ -433,12 +433,22 @@ function rememberName(name) {
   try { localStorage.setItem("commentName", name); } catch { /* private mode: just don't remember */ }
 }
 
+// Each name gets one of eight colours, picked from the name itself, so a person keeps their colour
+// on every post without anything being stored.
+function nameHue(name) {
+  let h = 0;
+  for (const ch of name.trim().toLowerCase()) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+  return h % 8;
+}
+
 function commentItem(c, post) {
   const li = el("li", "comment");
   const meta = el("div", "comment-meta");
   const when = el("time", null, commentTimeFmt.format(new Date(c.createdAt)));
   when.dateTime = c.createdAt;
-  meta.append(el("span", "comment-name", c.authorName), when);
+  const name = el("span", "comment-name", c.authorName);
+  name.style.color = `var(--name-${nameHue(c.authorName)})`;
+  meta.append(name, when);
   if (isEditor()) {
     const rm = el("button", "comment-delete", "Delete");
     rm.type = "button";
