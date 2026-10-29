@@ -25,6 +25,9 @@
   --ink-4: #4a4a4a;           /* dates outside the month */
   --hover: #080808;
   --backdrop: rgba(0, 0, 0, 0.8);
+  /* Comment names: eight hues, light enough to read on the dark surface */
+  --name-0: #7cc4ff; --name-1: #8be3a5; --name-2: #c7a3ff; --name-3: #ff9eb8;
+  --name-4: #6fe0d8; --name-5: #ffd36e; --name-6: #ffa77a; --name-7: #a3b0ff;
 
   --font: "Geist", system-ui, sans-serif;
   --radius: 20px;
@@ -60,6 +63,9 @@
   --ink-4: #b5b5b5;
   --hover: #fafafa;
   --backdrop: rgba(0, 0, 0, 0.35);
+  /* The same hues, dark enough to read on the light surface */
+  --name-0: #1f64b8; --name-1: #1d7a3c; --name-2: #6d3fc0; --name-3: #b02a63;
+  --name-4: #0f7470; --name-5: #8a6400; --name-6: #b4521b; --name-7: #4b4fc4;
   color-scheme: light;
 }
 /* The logo file is white; flip it for the white ground. */
