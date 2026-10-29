@@ -16,8 +16,8 @@ has already gone out, with each post drawn the way the platform will show it.
 - **Two states.** A post is a *draft* until it goes live. When it appears on X or LinkedIn, the
   calendar marks it *posted* on its own and links to it.
 - **Comments.** Anyone with the link can leave feedback on a post, no account needed.
-- **Your time zone.** Times show in each viewer's own zone, with a switch to Manila time, where
-  posts are planned.
+- **Your time zone.** Times show in each viewer's own zone, with a switch to UTC. Posts are
+  written in your own time and saved as the moment they stand for.
 - **Light and dark mode**, following the system setting, with a toggle in the header.
 - **Keyboard shortcuts:** arrows move between days, T jumps to today, M and W switch views, ?
   lists them all.

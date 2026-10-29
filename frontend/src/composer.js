@@ -1,7 +1,7 @@
 // The post composer: write or edit a post with its live preview beside it. Only shown to the editor;
 // the database refuses writes from anyone else whatever the page shows.
 
-import { savePost, deletePost, TIME_ZONE } from "./data.js";
+import { savePost, deletePost, VIEWER_TIME_ZONE, zoneLabel, zonedToISO } from "./data.js";
 import { configured, signInWithGoogle } from "./supabase.js";
 import { driveAccess, driveProblem, DriveAccessError } from "./drive.js";
 
@@ -21,8 +21,9 @@ export function takeStashedDraft() {
 
 const PLATFORM_LIMITS = { x: 280, linkedin: 3000 };
 
-const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" });
-const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: TIME_ZONE, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+// Dates and times are written in the editor's own time zone and saved as the moment they stand for.
+const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: VIEWER_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" });
+const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: VIEWER_TIME_ZONE, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -101,7 +102,7 @@ export function openComposer({ existing = null, day, restore = null, preview, on
   time.required = true;
   time.value = start.time;
   const when = el("div", "cf-row");
-  when.append(field("Date", date), field("Time, Manila", time));
+  when.append(field("Date", date), field(`Your time, ${zoneLabel(VIEWER_TIME_ZONE)}`, time));
 
   const copy = el("textarea", "field");
   copy.rows = 7;
@@ -215,7 +216,7 @@ export function openComposer({ existing = null, day, restore = null, preview, on
       platform: platform.value(),
       // Every post is written as a draft; the stats collector marks it posted once it is live.
       status: existing?.status === "published" ? "published" : "draft",
-      scheduledAt: `${date.value}T${time.value || "09:00"}:00+08:00`,
+      scheduledAt: zonedToISO(date.value, time.value || "09:00", VIEWER_TIME_ZONE),
       copy: copy.value.trim(),
       hashtags: parseTags(tags.value),
       thread: platform.value() === "x" ? replies.map((r) => r.area.value.trim()).filter(Boolean) : [],
