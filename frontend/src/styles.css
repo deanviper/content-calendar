@@ -99,6 +99,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .skip:focus { top: 12px; }
 
 .pf { width: 13px; height: 13px; flex: none; }
+/* Each platform in its own colours: X's logo in black or white, LinkedIn's white "in" on its blue. */
+.pf-x { color: var(--ink); }
+.pf-linkedin { color: #0a66c2; }
 
 /* Controls: pills. White means "the thing to press"; everything else is a quiet grey. */
 
@@ -267,7 +270,7 @@ textarea.field { padding: 10px 14px; resize: vertical; }
   font-size: 12px;
   line-height: 18px;
 }
-.line .pf { width: 11px; height: 11px; color: var(--ink-2); }
+.line .pf { width: 11px; height: 11px; }
 .line-time { flex: none; color: var(--ink-2); }
 .line-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .line.s-published { color: var(--ink-3); }
@@ -341,7 +344,8 @@ html:has(.day[open]) { overflow: hidden; }
   font-size: 13px;
   color: var(--ink-2);
 }
-.post-platform { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); font-weight: 500; }
+.post-platform { display: inline-flex; align-items: center; }
+.post-platform .pf { width: 16px; height: 16px; }
 .status { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; }
 .status.s-suggested { color: var(--decide); }
 
