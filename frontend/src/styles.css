@@ -251,10 +251,6 @@ textarea.field { padding: 10px 14px; resize: vertical; }
 }
 .cell.today .date { background: var(--ink); color: var(--ground); }
 
-/* The open day: its cell and the sheet below share one surface, like a tab and its page. */
-.week.is-open .cell[aria-expanded="true"] { background: var(--surface); border-left-color: transparent; }
-.week.is-open .cell[aria-expanded="true"] + .cell { border-left-color: transparent; }
-
 .lines { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 
 .line {
@@ -287,17 +283,37 @@ textarea.field { padding: 10px 14px; resize: vertical; }
 [data-view="week"] .s-suggested .line-status { color: var(--decide); }
 
 
-/* Day sheet */
+/* Day pop-up: the open day over the calendar. Its header stays put while the posts scroll. */
 
-.sheet {
-  margin-bottom: 24px;
-  padding: 28px 32px 32px;
+.day {
+  width: min(1080px, calc(100vw - 48px));
+  max-width: none;
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
   background: var(--surface);
-  border-radius: 0 0 var(--radius) var(--radius);
+  color: var(--ink);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
-.week.is-open + .sheet { border-top-left-radius: 0; }
+.day::backdrop { background: var(--backdrop); }
+html:has(.day[open]) { overflow: hidden; }
 
-.sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+.sheet { padding: 0 32px 32px; }
+
+.sheet-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0 -32px 16px;
+  padding: 28px 32px 16px;
+  background: var(--surface);
+}
 .sheet h2 { margin: 0; font-size: 28px; font-weight: 500; letter-spacing: -0.03em; line-height: 1.1; }
 .sheet .sub { margin-top: 6px; }
 
@@ -364,6 +380,40 @@ textarea.field { padding: 10px 14px; resize: vertical; }
 .pv-li .pv-media { border-radius: 6px; }
 .pv-media img, .pv-media video, .pv-media iframe { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; object-fit: cover; background: var(--ground); }
 .pv-media video { object-fit: contain; }
+
+/* A Drive video previews as its first frame with a play button, the way the feed shows it. */
+.pv-video { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; padding: 0; border: 0; background: #000000; cursor: pointer; }
+.pv-media .pv-video img { height: 100%; }
+.pv-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #ffffff;
+}
+.pv-x .pv-play { background: #1d9bf0; border: 3px solid #ffffff; }
+.pv-video:hover .pv-play, .pv-video:focus-visible .pv-play { filter: brightness(1.15); }
+
+/* The video player pop-up: Drive's player, with room for its controls. */
+.player {
+  width: min(1200px, calc(100vw - 32px), (100dvh - 120px) * 16 / 9);
+  max-width: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  overflow: hidden;
+}
+.player::backdrop { background: var(--backdrop); }
+.player iframe { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; background: #000000; }
+.player form { display: flex; justify-content: flex-end; padding: 12px 16px; }
 
 .post-foot {
   display: flex;
@@ -449,8 +499,9 @@ kbd {
   .lines, [data-view="week"] .lines { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 3px; }
   .line, [data-view="week"] .line { display: contents; }
   .line > :not(.mark), .more { display: none; }
-  .sheet { padding: 20px 16px 24px; margin: 0 -16px 16px; border-radius: 0; }
-  .sheet-head { flex-direction: column; gap: 12px; }
+  .day { width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; }
+  .sheet { padding: 0 16px 24px; }
+  .sheet-head { flex-direction: column; gap: 12px; margin: 0 -16px 12px; padding: 20px 16px 12px; }
   .posts { grid-template-columns: minmax(0, 1fr); gap: 36px; }
   .comment-form { grid-template-columns: 1fr auto; }
   .comment-form input { grid-column: 1 / -1; }

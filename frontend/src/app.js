@@ -25,6 +25,8 @@ const els = {
   weekdays: $("weekdays"),
   weeks: $("weeks"),
   help: $("help"),
+  day: $("day"),
+  player: $("player"),
   newPost: $("new-post"),
   account: $("account"),
 };
@@ -60,8 +62,8 @@ const state = {
   platform: "all",
   statuses: new Set(Object.keys(STATUSES)),
   selected: parseHash() ?? todayKey,
-  // The selected day's week opens into a sheet below it; closing it keeps the selection.
-  open: true,
+  // The selected day opens in a pop-up; closing it keeps the selection. A link to a day opens it.
+  open: parseHash() !== null,
   focusPost: null,
   // The signed-in editor, if any. Everyone else gets the read-and-comment calendar.
   user: null,
@@ -223,24 +225,39 @@ function renderGrid(keys) {
 
   const rows = [];
   for (let w = 0; w < keys.length / 7; w++) {
-    const week = keys.slice(w * 7, w * 7 + 7);
     const row = el("div", "week");
     row.setAttribute("role", "row");
-    row.append(...week.map(({ k, inPeriod }) => renderCell(k, inPeriod)));
+    row.append(...keys.slice(w * 7, w * 7 + 7).map(({ k, inPeriod }) => renderCell(k, inPeriod)));
     rows.push(row);
-    const col = week.findIndex(({ k }) => k === state.selected);
-    if (state.open && col >= 0) {
-      row.classList.add("is-open");
-      row.style.setProperty("--col", col);
-      rows.push(renderSheet(state.selected));
-    }
   }
   els.weeks.replaceChildren(...rows);
+  renderDay();
+}
 
+// The open day shows in a pop-up over the calendar. It re-renders with the grid and keeps its
+// scroll position, unless the day changed.
+function renderDay() {
+  if (!state.open) {
+    if (els.day.open) els.day.close();
+    return;
+  }
+  const top = els.day.dataset.key === state.selected ? els.day.scrollTop : 0;
+  els.day.dataset.key = state.selected;
+  els.day.setAttribute("aria-label", longDayFmt.format(fromKey(state.selected)));
+  els.day.replaceChildren(renderSheet(state.selected));
+  if (!els.day.open) els.day.showModal();
+  els.day.scrollTop = top;
   if (state.focusPost) {
-    els.weeks.querySelector(`.post[data-post="${state.focusPost}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    els.day.querySelector(`.post[data-post="${state.focusPost}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     state.focusPost = null;
   }
+}
+
+function closeDay() {
+  state.open = false;
+  history.replaceState(null, "", location.pathname + location.search);
+  render();
+  els.weeks.querySelector(`.cell[data-key="${state.selected}"]`)?.focus();
 }
 
 function renderCell(k, inPeriod) {
@@ -255,7 +272,7 @@ function renderCell(k, inPeriod) {
   if (k === todayKey) cell.classList.add("today");
   const selected = k === state.selected;
   cell.setAttribute("aria-selected", String(selected));
-  if (selected && state.open) cell.setAttribute("aria-expanded", "true");
+  cell.setAttribute("aria-haspopup", "dialog");
   cell.tabIndex = selected ? 0 : -1;
   cell.setAttribute("aria-label",
     `${longDayFmt.format(d)}${k === todayKey ? ", today" : ""}, ${posts.length ? plural(posts.length, "post") : "nothing planned"}`);
@@ -294,7 +311,6 @@ function renderSheet(k) {
   const posts = postsOn(k);
   const all = state.byDay.get(k) ?? [];
   const sheet = el("section", "sheet");
-  sheet.setAttribute("aria-label", longDayFmt.format(fromKey(k)));
 
   const head = el("header", "sheet-head");
   const title = el("div");
@@ -536,8 +552,8 @@ function textWithTags(post, node) {
   return node;
 }
 
-// Images and videos, up to four, as the platform would lay them out. A Drive video plays in
-// Drive's own player; a video picked in the composer plays from the file.
+// Images and videos, up to four, as the platform would lay them out. A Drive video shows its first
+// frame and plays in Drive's own player in a pop-up; a video picked in the composer plays from the file.
 function media(post) {
   const items = post.assets.filter((a) => a.type === "image" || a.type === "video");
   if (!items.length) return null;
@@ -545,11 +561,19 @@ function media(post) {
   for (const a of items.slice(0, 4)) {
     let node;
     if (a.type === "video" && a.embed) {
-      node = el("iframe");
-      node.src = a.embed;
-      node.title = a.alt || a.name;
-      node.allow = "autoplay; fullscreen";
-      node.loading = "lazy";
+      node = el("button", "pv-video");
+      node.type = "button";
+      node.setAttribute("aria-label", `Play ${a.alt || a.name}`);
+      const poster = el("img");
+      poster.src = a.url;
+      poster.alt = "";
+      poster.loading = "lazy";
+      poster.referrerPolicy = "no-referrer";   // Drive's thumbnails refuse some referrers
+      poster.addEventListener("error", () => poster.remove(), { once: true });
+      const play = el("span", "pv-play");
+      play.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
+      node.append(poster, play);
+      node.addEventListener("click", () => openPlayer(a.embed, a.alt || a.name));
     } else if (a.type === "video") {
       node = el("video");
       node.src = a.url;
@@ -565,6 +589,13 @@ function media(post) {
     wrap.append(node);
   }
   return wrap;
+}
+
+function openPlayer(src, title) {
+  const frame = els.player.querySelector("iframe");
+  frame.title = title;
+  frame.src = src;
+  els.player.showModal();
 }
 
 // An X post, and its thread below it the way X shows one: each reply under the first tweet, joined
@@ -628,11 +659,11 @@ function previewLinkedIn(post) {
 
 // Interaction
 
-function select(k, { focus = false, post = null, toggle = false } = {}) {
-  state.open = toggle && k === state.selected ? !state.open : true;
+function select(k, { focus = false, post = null, open = state.open } = {}) {
+  state.open = open;
   state.selected = k;
   state.focusPost = post;
-  history.replaceState(null, "", `#${k}`);
+  history.replaceState(null, "", open ? `#${k}` : location.pathname + location.search);
   render();
   if (focus) els.weeks.querySelector(`.cell[data-key="${k}"]`)?.focus();
 }
@@ -654,21 +685,48 @@ function setView(view) {
 }
 
 els.weeks.addEventListener("click", (e) => {
+  const cell = e.target.closest(".cell");
+  if (!cell) return;
+  const line = e.target.closest(".line");
+  select(cell.dataset.key, { post: line?.dataset.post ?? null, open: true });
+});
+
+els.day.addEventListener("click", (e) => {
+  if (e.target === els.day) {   // the backdrop
+    closeDay();
+    return;
+  }
   const step = e.target.closest("[data-step]");
   if (step) {
     select(addDays(state.selected, Number(step.dataset.step)));
     return;
   }
   if (e.target.closest("[data-close]")) {
-    state.open = false;
-    render();
-    els.weeks.querySelector(`.cell[data-key="${state.selected}"]`)?.focus();
+    closeDay();
     return;
   }
-  const cell = e.target.closest(".cell");
-  if (!cell) return;
-  const line = e.target.closest(".line");
-  select(cell.dataset.key, { post: line?.dataset.post ?? null, toggle: !line });
+  const add = e.target.closest("[data-compose]");
+  if (add) compose(null, add.dataset.compose);
+});
+
+// Esc closes the pop-up on its own; keep the calendar in step with it.
+els.day.addEventListener("close", () => {
+  if (state.open) closeDay();
+});
+
+els.day.addEventListener("keydown", (e) => {
+  if (e.target.closest("input, textarea, select, [contenteditable]")) return;
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+    e.preventDefault();
+    select(addDays(state.selected, e.key === "ArrowLeft" ? -1 : 1));
+  }
+});
+
+els.player.addEventListener("click", (e) => {
+  if (e.target === els.player) els.player.close();
+});
+els.player.addEventListener("close", () => {
+  els.player.querySelector("iframe").src = "about:blank";
 });
 
 els.weeks.addEventListener("keydown", (e) => {
@@ -683,19 +741,16 @@ els.weeks.addEventListener("keydown", (e) => {
     els.weeks.querySelector(`.cell[data-key="${state.selected}"]`)?.focus();
   } else if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
-    select(state.selected, { focus: true, toggle: true });
+    select(state.selected, { open: true });
   }
 });
 
 document.addEventListener("keydown", (e) => {
-  if (e.metaKey || e.ctrlKey || e.altKey || els.help.open) return;
+  if (e.metaKey || e.ctrlKey || e.altKey || document.querySelector("dialog[open]:not(#day)")) return;
   if (e.target.closest("input, textarea, select, [contenteditable]")) return;
   const k = e.key.toLowerCase();
-  if (e.key === "Escape" && state.open) {
-    state.open = false;
-    render();
-    els.weeks.querySelector(`.cell[data-key="${state.selected}"]`)?.focus();
-  } else if (k === "t") select(todayKey, { focus: true });
+  if (e.key === "Escape" && state.open) closeDay();
+  else if (k === "t") select(todayKey, { focus: true });
   else if (k === "m") setView("month");
   else if (k === "w") setView("week");
   else if (k === "n" && isEditor()) { e.preventDefault(); compose(); }
@@ -731,7 +786,7 @@ els.statuses.addEventListener("click", (e) => {
 
 window.addEventListener("hashchange", () => {
   const k = parseHash();
-  if (k && k !== state.selected) select(k);
+  if (k && (k !== state.selected || !state.open)) select(k, { open: true });
 });
 
 // Editing (editor only)
@@ -753,7 +808,7 @@ function compose(existing = null, day = state.selected, restore = null) {
     preview,
     onSaved: (saved) => {
       upsertPost(saved);
-      select(dayKeyFmt.format(new Date(saved.scheduledAt)), { post: saved.id });
+      select(dayKeyFmt.format(new Date(saved.scheduledAt)), { post: saved.id, open: true });
     },
     onDeleted: (gone) => {
       state.posts = state.posts.filter((p) => p.id !== gone.id);
@@ -762,11 +817,6 @@ function compose(existing = null, day = state.selected, restore = null) {
     },
   });
 }
-
-els.weeks.addEventListener("click", (e) => {
-  const add = e.target.closest("[data-compose]");
-  if (add) compose(null, add.dataset.compose);
-});
 
 els.newPost.addEventListener("click", () => compose());
 
