@@ -76,13 +76,21 @@
     <h2 id="help-title">Keyboard shortcuts</h2>
     <dl>
       <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Move between days</dd>
-      <dt><kbd>Enter</kbd></dt><dd>Open or close the day</dd>
+      <dt><kbd>Enter</kbd></dt><dd>Open the day</dd>
+      <dt><kbd>←</kbd> <kbd>→</kbd> in a day</dt><dd>Previous or next day</dd>
       <dt><kbd>Esc</kbd></dt><dd>Close the day</dd>
       <dt><kbd>Page Up</kbd> <kbd>Page Down</kbd></dt><dd>Previous or next month or week</dd>
       <dt><kbd>T</kbd></dt><dd>Jump to today</dd>
       <dt><kbd>M</kbd> <kbd>W</kbd></dt><dd>Month or week view</dd>
       <dt><kbd>N</kbd></dt><dd>New post (editor)</dd>
     </dl>
+    <form method="dialog"><button class="pill">Close</button></form>
+  </dialog>
+
+  <dialog class="day" id="day"></dialog>
+
+  <dialog class="player" id="player" aria-label="Video">
+    <iframe title="Video" allow="autoplay; fullscreen" allowfullscreen></iframe>
     <form method="dialog"><button class="pill">Close</button></form>
   </dialog>
 
