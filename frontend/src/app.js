@@ -129,7 +129,7 @@ function el(tag, className, text) {
 function icon(platform) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("class", "pf");
+  svg.setAttribute("class", `pf pf-${platform}`);
   svg.setAttribute("aria-hidden", "true");
   const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
   use.setAttribute("href", `#i-${platform}`);
@@ -361,7 +361,11 @@ function renderPost(post) {
   article.dataset.post = post.id;
 
   const meta = el("header", "post-meta");
-  const name = el("span", "post-platform", platform.name);
+  const name = el("span", "post-platform");
+  name.setAttribute("role", "img");
+  name.setAttribute("aria-label", platform.name);
+  name.title = platform.name;
+  name.append(icon(post.platform));
   const time = el("time", null, timeFmt.format(new Date(post.scheduledAt)));
   time.dateTime = post.scheduledAt;
   const status = el("span", `status s-${post.status}`);
