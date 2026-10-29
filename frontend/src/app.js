@@ -31,7 +31,7 @@ const els = {
   account: $("account"),
 };
 
-// Times show in the viewer's own time zone unless they switch to Manila, where posts are planned.
+// Times show in the viewer's own time zone unless they switch to UTC.
 // Days follow the same zone, so a post sits on the day it goes out for the person reading.
 function storedZone() {
   try { return localStorage.getItem("timeZone"); } catch { return null; }
@@ -192,7 +192,7 @@ function render() {
   els.sub.textContent = sub.join(" · ");
   if (VIEWER_TIME_ZONE !== TIME_ZONE) {
     const other = zone === TIME_ZONE ? VIEWER_TIME_ZONE : TIME_ZONE;
-    const sw = el("button", "link", other === TIME_ZONE ? "Show Manila time" : "Show my time");
+    const sw = el("button", "link", other === TIME_ZONE ? "Show UTC" : "Show my time");
     sw.type = "button";
     sw.addEventListener("click", () => setZone(other));
     els.sub.append(" · ", sw);

@@ -1,5 +1,5 @@
 import { loadStats, addMarker, resync } from "./stats-data.js";
-import { manilaDate } from "./data.js";
+import { utcDate } from "./data.js";
 import { initThemeToggle } from "./theme.js";
 
 const PLATFORMS = {
@@ -18,9 +18,9 @@ const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFracti
 const whole = new Intl.NumberFormat("en");
 const pct = new Intl.NumberFormat("en", { style: "percent", minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const dayFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
-const dateTimeFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" });
+const dateTimeFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
 
-const t = manilaDate(new Date());
+const t = utcDate(new Date());
 const todayKey = new Date(Date.UTC(t.y, t.m, t.d)).toISOString().slice(0, 10);
 
 function el(tag, className, text) {
@@ -37,7 +37,7 @@ function addDays(k, n) {
 }
 
 function manilaDay(iso) {
-  const p = manilaDate(new Date(iso));
+  const p = utcDate(new Date(iso));
   return new Date(Date.UTC(p.y, p.m, p.d)).toISOString().slice(0, 10);
 }
 
@@ -112,7 +112,7 @@ function postsBetween(from, to) {
 function render() {
   const w = window_();
   const g = gains();
-  $("sub").textContent = `${dayFmt.format(new Date(w.start))} – ${dayFmt.format(new Date(w.end))} · compared with the ${w.days} days before · Manila time${state.data.live ? "" : " · sample data"}`;
+  $("sub").textContent = `${dayFmt.format(new Date(w.start))} – ${dayFmt.format(new Date(w.end))} · compared with the ${w.days} days before · UTC${state.data.live ? "" : " · sample data"}`;
   renderKpis(w, g);
   renderImpressions(w, g);
   renderFollowers(w);

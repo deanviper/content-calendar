@@ -23,8 +23,9 @@
 import { configured, db } from "./supabase.js";
 import { uploadToDrive, trashInDrive, driveId, drive } from "./drive.js";
 
-export const TIME_ZONE = "Asia/Manila";
-export const TIME_ZONE_LABEL = "Manila, GMT+8";
+// The shared reference everyone can switch to. Each viewer reads the calendar in their own zone first.
+export const TIME_ZONE = "UTC";
+export const TIME_ZONE_LABEL = "UTC";
 
 // The account each platform preview is drawn as. badge: on X "gold" (verified organisation),
 // "blue" or "grey"; on LinkedIn "verified". null when the account has none.
@@ -228,7 +229,7 @@ const SAMPLE_THREADS = {
 };
 
 function samplePosts(now) {
-  const today = manilaDate(now);
+  const today = dateIn(now, "Asia/Manila");
   return SAMPLE.map(([offset, platform, status, time, copy, hashtags, assets], i) => {
     const d = new Date(Date.UTC(today.y, today.m, today.d + offset));
     const date = d.toISOString().slice(0, 10);
@@ -247,7 +248,7 @@ function samplePosts(now) {
   });
 }
 
-// Posts are planned in Manila time. Viewers can read the calendar in their own time zone instead.
+// Viewers read the calendar in their own time zone, and can switch to UTC.
 export const VIEWER_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || TIME_ZONE;
 
 // "London, GMT+1" for a time zone id, with the offset it has today.
@@ -259,7 +260,26 @@ export function zoneLabel(zone) {
   return offset ? `${city}, ${offset}` : city;
 }
 
-export const manilaDate = (date) => dateIn(date, TIME_ZONE);
+export const utcDate = (date) => dateIn(date, TIME_ZONE);
+
+// The moment a wall-clock date and time in a time zone stands for, as an ISO string.
+// "2026-11-02", "22:00", "Asia/Manila" → "2026-11-02T14:00:00.000Z". Checked twice for DST changes.
+export function zonedToISO(date, time, zone) {
+  const [y, m, d] = date.split("-").map(Number);
+  const [h, min] = time.split(":").map(Number);
+  const wall = Date.UTC(y, m - 1, d, h, min);
+  let t = wall - offsetMs(zone, wall);
+  t = wall - offsetMs(zone, t);
+  return new Date(t).toISOString();
+}
+
+function offsetMs(zone, t) {
+  const name = new Intl.DateTimeFormat("en-US", { timeZone: zone, timeZoneName: "longOffset" })
+    .formatToParts(new Date(t)).find((p) => p.type === "timeZoneName")?.value ?? "GMT";
+  const [, sign, hh, mm] = name.match(/GMT([+-])(\d{2}):?(\d{2})?/) ?? [];
+  if (!sign) return 0;
+  return (sign === "-" ? -1 : 1) * (Number(hh) * 60 + Number(mm ?? 0)) * 60_000;
+}
 
 // The date of a moment in a time zone, as { y, m (0-based), d }.
 export function dateIn(date, zone) {
