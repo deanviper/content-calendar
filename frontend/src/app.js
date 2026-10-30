@@ -426,7 +426,8 @@ function renderPost(post) {
   return article;
 }
 
-// Comments: anyone can leave one, signed in or not. The name is remembered on this device.
+// Comments: anyone can leave one, signed in or not. Signed in, the name comes from the account;
+// otherwise it is remembered on this device.
 
 
 function rememberedName() {
@@ -486,7 +487,8 @@ function renderComments(post) {
   name.autocomplete = "name";
   name.maxLength = COMMENT_LIMITS.name;
   name.required = true;
-  name.value = rememberedName();
+  // Signed in, the account says who you are; a name remembered on a shared browser can't override it.
+  name.value = state.user?.name ? state.user.name.split(/\s+/)[0] : rememberedName();
   name.setAttribute("aria-label", "Your name");
   const body = el("textarea", "field");
   body.name = "body";

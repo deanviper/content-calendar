@@ -46,8 +46,8 @@ export async function signOut() {
   await supabase.auth.signOut();
 }
 
-// Returns { email } for a signed-in editor, { email, editor: false } for anyone else signed in,
-// or null when nobody is. Sample mode has no accounts, so everyone is an editor there.
+// Returns { email, name } for a signed-in editor, { email, name, editor: false } for anyone else
+// signed in, or null when nobody is. Sample mode has no accounts, so everyone is an editor there.
 export async function currentUser() {
   if (!configured) return { email: "sample mode", editor: true };
   const supabase = await db();
@@ -55,7 +55,9 @@ export async function currentUser() {
   const session = data.session;
   if (!session) return null;
   const { data: editor, error } = await supabase.rpc("is_editor");
-  return { email: session.user.email, editor: !error && editor === true };
+  const meta = session.user.user_metadata ?? {};
+  const name = (meta.full_name || meta.name || "").trim();
+  return { email: session.user.email, name, editor: !error && editor === true };
 }
 
 export async function onAuthChange(fn) {
