@@ -24,6 +24,11 @@ has already gone out, with each post drawn the way the platform will show it.
 
 Only Silencio's editor can add or change posts. Everyone else can read and comment.
 
+The whole site sits behind a team password, checked on Vercel before any file is served
+(`frontend/middleware.js`). The password and the session-signing secret are the Vercel environment
+variables `CALENDAR_PASSWORD` and `CALENDAR_SESSION_SECRET`; a correct password keeps you signed in
+for 48 hours on that browser, and changing the password signs everyone out.
+
 ## How it's built
 
 - `frontend/`: a static site in plain JavaScript and CSS, no build step, hosted on Vercel.
