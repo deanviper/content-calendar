@@ -378,7 +378,12 @@ function renderPost(post) {
   const foot = el("footer", "post-foot");
   const count = el("span", "count");
   const longReply = thread.findIndex((t) => t.length > platform.limit);
-  if (length > platform.limit) {
+  const art = articleOf(post);
+  if (art) {
+    // Articles have no 280 limit; what matters is the title and the opening the card shows.
+    const words = art.body.split(/\s+/).filter(Boolean).length;
+    count.textContent = `X Article · title ${art.title.length} characters · opening ${words} words`;
+  } else if (length > platform.limit) {
     count.classList.add("over");
     count.textContent = `${length - platform.limit} characters over the ${platform.limit} limit`;
   } else if (longReply >= 0) {
@@ -402,12 +407,12 @@ function renderPost(post) {
     live.rel = "noopener";
     actions.append(live);
   }
-  const copyLabel = thread.length ? "Copy first tweet" : "Copy text";
+  const copyLabel = art ? "Copy title" : thread.length ? "Copy first tweet" : "Copy text";
   const copy = el("button", "pill primary", copyLabel);
   copy.type = "button";
   copy.addEventListener("click", async () => {
     try {
-      await navigator.clipboard.writeText(fullText(post));
+      await navigator.clipboard.writeText(art ? art.title : fullText(post));
       copy.textContent = "Copied";
     } catch {
       copy.textContent = "Copy failed";
@@ -620,9 +625,14 @@ function previewX(post) {
   const pv = el("div", "preview pv-x");
   const thread = post.thread ?? [];
   const first = el("div", "pv-tweet");
-  first.append(author("x"), textWithTags(post, el("p", "pv-text")));
-  const m = media(post);
-  if (m) first.append(m);
+  const art = articleOf(post);
+  if (art) {
+    first.append(author("x"), articleCard(art));
+  } else {
+    first.append(author("x"), textWithTags(post, el("p", "pv-text")));
+    const m = media(post);
+    if (m) first.append(m);
+  }
   pv.append(first);
   if (!thread.length) return pv;
   pv.classList.add("pv-has-thread");
@@ -645,6 +655,35 @@ function previewX(post) {
     pv.append(tweet);
   });
   return pv;
+}
+
+// An X Article: an X post whose copy opens with "# Title", the rest being the article's opening.
+// X shows it as a card with no text above it: the cover at 5:2 with X's "Article" tag, the title,
+// then the first lines of the article. The cover is the image named cover or header, else the first.
+function articleOf(post) {
+  if (post.platform !== "x" || !post.copy.startsWith("# ")) return null;
+  const [first, ...rest] = post.copy.split("\n");
+  const images = post.assets.filter((a) => a.type === "image");
+  const cover = images.find((a) => /cover|header/i.test(a.name)) ?? images[0] ?? null;
+  return { title: first.slice(2).trim(), body: rest.join("\n").trim(), cover };
+}
+
+function articleCard(art) {
+  const card = el("div", "pv-article");
+  const head = el("div", "pv-article-cover");
+  if (art.cover) {
+    const img = el("img");
+    img.src = art.cover.url;
+    img.alt = art.cover.alt ?? "";
+    img.loading = "lazy";
+    head.append(img);
+  }
+  const tag = el("span", "pv-article-tag");
+  tag.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18.24 2.25h3.31l-7.23 8.26 8.5 11.24h-6.65l-5.21-6.82-5.97 6.82H1.68l7.73-8.84L1.25 2.25h6.83l4.71 6.23zm-1.16 17.52h1.83L7.08 4.13H5.12z"/></svg>';
+  tag.append("Article");
+  head.append(tag);
+  card.append(head, el("p", "pv-article-title", art.title), el("p", "pv-article-text", art.body));
+  return card;
 }
 
 function previewLinkedIn(post) {
