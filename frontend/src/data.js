@@ -10,7 +10,10 @@
 //     hashtags: string[],      // without the "#"
 //     thread: string[],        // X only: follow-up tweets posted as replies to the first, in order
 //     assets: { type: "image" | "video" | "file", url: string, name: string, alt?: string,
-//               embed?: string, download?: string }[],   // embed: a video player page
+//               embed?: string, download?: string,     // embed: a video player page
+//               reply?: number }[],   // X: 0 = the first tweet, 1 = the first reply, and so on
+// Which tweet an asset belongs to is kept in its position: the first tweet uses 0-99, reply 1 uses
+// 100-199, reply 2 200-299, so threads got photos without a database change.
 //     comments: { id: string, authorName: string, body: string, createdAt: string }[]
 //   }
 //
@@ -82,13 +85,16 @@ const isMissingThread = (error) => error.code === "42703" || /thread/.test(error
 // A Drive file is shown through links that work without signing in: a thumbnail for the image,
 // Drive's player for a video. Anything else is shown at its own URL.
 function toAsset(a, signed = new Map()) {
-  const base = { id: a.id, type: a.type, name: a.name, alt: a.alt ?? "", storagePath: a.storage_path };
+  const base = { id: a.id, type: a.type, name: a.name, alt: a.alt ?? "", storagePath: a.storage_path,
+    position: a.position ?? 0, reply: Math.floor((a.position ?? 0) / REPLY_SLOT) };
   const id = driveId(a.url);
   if (id) {
     return { ...base, url: drive.image(id), driveUrl: a.url, download: drive.download(id), embed: a.type === "video" ? drive.player(id) : undefined };
   }
   return { ...base, url: a.url ?? signed.get(a.storage_path) };
 }
+
+const REPLY_SLOT = 100;
 
 const trashAll = (assets) => Promise.allSettled(assets.filter((a) => a.driveUrl).map((a) => trashInDrive(a.driveUrl)));
 
@@ -119,14 +125,17 @@ function assetType(file) {
   return "file";
 }
 
-// post: { id?, platform, status, scheduledAt, copy, hashtags, externalUrl }
-// files: new File objects to attach; removed: ids of existing assets to drop.
+// post: { id?, platform, status, scheduledAt, copy, hashtags, externalUrl, assets }
+// files: new File objects to attach, each with .reply (which tweet it goes under, 0 = the first);
+// removed: ids of existing assets to drop. Kept assets carry their (possibly new) reply in post.assets.
 // Returns the saved post in the calendar's shape, comments and kept assets included.
 export async function savePost(post, { files = [], removed = [], existing = null } = {}) {
-  const keptAssets = (existing?.assets ?? []).filter((a) => !removed.includes(a.id));
+  const replyOf = new Map((post.assets ?? []).filter((a) => a.id).map((a) => [a.id, a.reply ?? 0]));
+  const keptAssets = (existing?.assets ?? []).filter((a) => !removed.includes(a.id))
+    .map((a) => ({ ...a, reply: post.platform === "x" ? replyOf.get(a.id) ?? a.reply ?? 0 : 0 }));
 
   if (!configured) {
-    const added = files.map((f) => ({ id: sampleId(), type: assetType(f), url: URL.createObjectURL(f), name: f.name, alt: "" }));
+    const added = files.map((f) => ({ id: sampleId(), type: assetType(f), url: URL.createObjectURL(f), name: f.name, alt: "", reply: f.reply ?? 0 }));
     return { ...existing, ...post, id: post.id ?? sampleId(), assets: [...keptAssets, ...added], comments: existing?.comments ?? [] };
   }
 
@@ -162,10 +171,24 @@ export async function savePost(post, { files = [], removed = [], existing = null
     await trashAll(gone);
   }
 
+  // Each tweet numbers its own assets from its slot: kept ones first, in their old order, then new ones.
+  const next = new Map();
+  const slot = (reply) => {
+    const n = next.get(reply) ?? 0;
+    next.set(reply, n + 1);
+    return reply * REPLY_SLOT + n;
+  };
+  for (const a of [...keptAssets].sort((x, y) => x.position - y.position)) {
+    const position = slot(a.reply);
+    if (position === a.position) continue;
+    const { error: e } = await supabase.from("post_assets").update({ position }).eq("id", a.id);
+    if (e) throw new Error(e.message);
+    a.position = position;
+  }
   const added = [];
-  let position = keptAssets.length;
   for (const { file, url } of uploaded) {
-    const row = { post_id: id, type: assetType(file), url, name: file.name, position: position++ };
+    const reply = post.platform === "x" ? file.reply ?? 0 : 0;
+    const row = { post_id: id, type: assetType(file), url, name: file.name, position: slot(reply) };
     const { data: a, error: e } = await supabase.from("post_assets").insert(row).select("id").single();
     if (e) throw new Error(e.message);
     added.push(toAsset({ ...row, id: a.id }));

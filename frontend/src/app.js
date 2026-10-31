@@ -575,8 +575,9 @@ function textWithTags(post, node) {
 
 // Images and videos, up to four, as the platform would lay them out. A Drive video shows its first
 // frame and plays in Drive's own player in a pop-up; a video picked in the composer plays from the file.
-function media(post) {
-  const items = post.assets.filter((a) => a.type === "image" || a.type === "video");
+// reply picks the tweet: 0 is the first one, 1 the first reply. LinkedIn posts only have 0.
+function media(post, reply = 0) {
+  const items = post.assets.filter((a) => (a.type === "image" || a.type === "video") && (a.reply ?? 0) === reply);
   if (!items.length) return null;
   const wrap = el("div", `pv-media n${Math.min(items.length, 4)}`);
   for (const a of items.slice(0, 4)) {
@@ -651,7 +652,10 @@ function previewX(post) {
       }
       setTimeout(() => { copy.textContent = "Copy"; }, 1600);
     });
-    tweet.append(author("x"), body, copy);
+    tweet.append(author("x"), body);
+    const m = media(post, i + 1);
+    if (m) tweet.append(m);
+    tweet.append(copy);
     pv.append(tweet);
   });
   return pv;
@@ -663,7 +667,7 @@ function previewX(post) {
 function articleOf(post) {
   if (post.platform !== "x" || !post.copy.startsWith("# ")) return null;
   const [first, ...rest] = post.copy.split("\n");
-  const images = post.assets.filter((a) => a.type === "image");
+  const images = post.assets.filter((a) => a.type === "image" && !a.reply);
   const cover = images.find((a) => /cover|header/i.test(a.name)) ?? images[0] ?? null;
   return { title: first.slice(2).trim(), body: rest.join("\n").trim(), cover };
 }
