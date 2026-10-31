@@ -80,7 +80,9 @@ export function openComposer({ existing = null, day, restore = null, preview, on
     ? { date: dayFmt.format(new Date(base.scheduledAt)), time: timeFmt.format(new Date(base.scheduledAt)) }
     : { date: day, time: "09:00" };
   const removed = new Set(restore?.removed ?? []);
+  // Each new file and each existing asset belongs to a tweet: null is the first, otherwise a reply row.
   let files = [];
+  const assetRow = new Map();
 
   const head = el("header", "composer-head");
   const title = el("h2", null, existing ? "Edit post" : "New post");
@@ -116,6 +118,7 @@ export function openComposer({ existing = null, day, restore = null, preview, on
   const addTweet = el("button", "pill", "Add a tweet to the thread");
   addTweet.type = "button";
   const replies = [];
+  const tweetOf = (row) => (row ? replies.indexOf(row) + 1 : 0);
   function addReply(text = "", focus = false) {
     const row = el("div", "cf-reply");
     const area = el("textarea", "field");
@@ -127,19 +130,28 @@ export function openComposer({ existing = null, day, restore = null, preview, on
     const rm = el("button", "cf-reply-remove", "×");
     rm.type = "button";
     rm.setAttribute("aria-label", "Remove this tweet from the thread");
+    const strip = el("div", "cf-assets cf-reply-assets");
+    const [pickOne, uploadOne] = picker("Add photos to this tweet");
+    const reply = { area, n, strip, pick: pickOne, upload: uploadOne };
     rm.addEventListener("click", () => {
-      replies.splice(replies.findIndex((r) => r.area === area), 1);
+      // The tweet's photos go with it.
+      for (const [id, r] of assetRow) if (r === reply) removed.add(id);
+      files = files.filter((f) => f.row !== reply);
+      replies.splice(replies.indexOf(reply), 1);
       row.remove();
       refresh();
     });
-    row.append(area, rm, n);
-    replies.push({ area, n });
+    uploadOne.addEventListener("change", () => addFiles(uploadOne, reply));
+    row.append(area, rm, n, strip);
+    replies.push(reply);
     thread.insertBefore(row, addTweet);
     if (focus) area.focus();
+    return reply;
   }
   thread.append(addTweet);
   addTweet.addEventListener("click", () => { addReply("", true); refresh(); });
-  for (const t of base?.thread ?? []) addReply(t);
+  const rows = (base?.thread ?? []).map((t) => addReply(t));
+  for (const a of existing?.assets ?? []) assetRow.set(a.id, (base?.platform === "x" && rows[(a.reply ?? 0) - 1]) || null);
   const threadField = field("Thread", thread, null, "div");
 
   const tags = el("input", "field");
@@ -148,16 +160,22 @@ export function openComposer({ existing = null, day, restore = null, preview, on
 
 
   const assets = el("div", "cf-assets");
-  const upload = el("input");
-  upload.type = "file";
-  upload.accept = "image/*,video/*";
-  upload.multiple = true;
-  upload.className = "visually-hidden";
-  upload.id = `upload-${Date.now()}`;
-  const pick = el("label", "pill", "Add photos or videos");
-  pick.htmlFor = upload.id;
-  pick.tabIndex = 0;
-  pick.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); upload.click(); } });
+  const [pick, upload] = picker("Add photos or videos");
+
+  // A file picker shown as a pill; returns [label, input].
+  function picker(text) {
+    const input = el("input");
+    input.type = "file";
+    input.accept = "image/*,video/*";
+    input.multiple = true;
+    input.className = "visually-hidden";
+    input.id = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const label = el("label", "pill", text);
+    label.htmlFor = input.id;
+    label.tabIndex = 0;
+    label.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
+    return [label, input];
+  }
 
   const msg = el("p", "cf-msg");
   msg.setAttribute("role", "status");
@@ -209,8 +227,9 @@ export function openComposer({ existing = null, day, restore = null, preview, on
   save.setAttribute("form", (form.id = `composer-${Date.now()}`));
 
   function draft() {
-    const keep = (existing?.assets ?? []).filter((a) => !removed.has(a.id));
-    const fresh = files.map((f) => ({ type: kind(f), url: f.preview, name: f.name, alt: "" }));
+    const x = platform.value() === "x";
+    const keep = (existing?.assets ?? []).filter((a) => !removed.has(a.id)).map((a) => ({ ...a, reply: x ? tweetOf(assetRow.get(a.id)) : 0 }));
+    const fresh = files.map((f) => ({ type: kind(f), url: f.preview, name: f.name, alt: "", reply: x ? tweetOf(f.row) : 0 }));
     return {
       id: existing?.id,
       platform: platform.value(),
@@ -239,13 +258,17 @@ export function openComposer({ existing = null, day, restore = null, preview, on
     }
     addTweet.textContent = replies.length ? "Add another tweet" : "Add a tweet to the thread";
 
-    assets.replaceChildren();
+    // Photos sit under the tweet they go with; on LinkedIn they all belong to the one post.
+    const strips = [assets, ...replies.map((r) => r.strip)];
+    const stripOf = (row) => (d.platform === "x" && row ? row.strip : assets);
+    for (const st of strips) st.replaceChildren();
     for (const a of existing?.assets ?? []) {
       if (removed.has(a.id)) continue;
-      assets.append(thumb(a.url, a.name, a.type, () => { removed.add(a.id); refresh(); }));
+      stripOf(assetRow.get(a.id)).append(thumb(a.url, a.name, a.type, () => { removed.add(a.id); refresh(); }));
     }
-    files.forEach((f, i) => assets.append(thumb(f.preview, f.name, kind(f), () => { files.splice(i, 1); refresh(); })));
+    for (const f of files) stripOf(f.row).append(thumb(f.preview, f.name, kind(f), () => { files = files.filter((g) => g !== f); refresh(); }));
     assets.append(pick, upload);
+    for (const r of replies) r.strip.append(r.pick, r.upload);
 
     sideBody.replaceChildren(d.copy ? preview(d) : el("p", "cf-hint", "The preview appears as you write."));
   }
@@ -267,14 +290,16 @@ export function openComposer({ existing = null, day, restore = null, preview, on
 
   form.addEventListener("input", refresh);
   form.addEventListener("change", refresh);
-  upload.addEventListener("change", () => {
-    for (const f of upload.files) {
+  function addFiles(input, row) {
+    for (const f of input.files) {
       f.preview = URL.createObjectURL(f);
+      f.row = row;
       files.push(f);
     }
-    upload.value = "";
+    input.value = "";
     refresh();
-  });
+  }
+  upload.addEventListener("change", () => addFiles(upload, null));
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -290,6 +315,7 @@ export function openComposer({ existing = null, day, restore = null, preview, on
       // in again and comes back to this post.
       if (files.length && configured && !(await driveAccess())) throw new DriveAccessError();
       msg.textContent = files.length ? "Uploading to Drive and saving…" : "Saving…";
+      for (const f of files) f.reply = d.platform === "x" ? tweetOf(f.row) : 0;
       const saved = await savePost(d, { files, removed: [...removed], existing });
       onSaved(saved);
       dialog.close();
