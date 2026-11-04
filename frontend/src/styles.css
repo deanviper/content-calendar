@@ -735,3 +735,12 @@ kbd {
 .pv-dc-embed-foot { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #dbdee1; }
 .pv-dc-embed-foot .pf { width: 16px; height: 16px; color: #ffffff; }
 .pv-dc-embed-note { margin: 0; font-size: 13px; color: #949ba4; }
+
+/* The owner's bin of deleted posts. */
+.bin { width: min(560px, calc(100vw - 32px)); }
+.bin-list { display: grid; gap: 10px; margin: 0 0 22px; padding: 0; list-style: none; }
+.bin-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.bin-text { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.bin-when { font-size: 12px; color: var(--ink-3); }
+.bin-copy { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.bin-empty { color: var(--ink-3); }

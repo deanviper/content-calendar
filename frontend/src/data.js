@@ -41,15 +41,17 @@ export const ACCOUNTS = {
 export async function loadPosts() {
   if (!configured) return samplePosts(new Date());
   const supabase = await db();
-  const select = (thread) => supabase
+  const select = (thread, bin) => supabase
     .from("posts")
-    .select(`id, platform, status, scheduled_at, copy, hashtags, external_url,${thread ? " thread," : ""}
+    .select(`id, platform, status, scheduled_at, copy, hashtags, external_url,${thread ? " thread," : ""}${bin ? " deleted_at," : ""}
       post_assets(id, type, storage_path, url, name, alt, position),
       post_comments(id, author_name, body, created_at)`)
     .order("scheduled_at");
-  let { data, error } = await select(true);
-  // Until the thread migration has run, the column is missing; the calendar still loads without it.
-  if (error && isMissingThread(error)) ({ data, error } = await select(false));
+  let { data, error } = await select(true, true);
+  // Until the bin migration has run, deleted_at is missing; the calendar still loads without it.
+  if (error && isMissing(error, "deleted_at")) ({ data, error } = await select(true, false));
+  // Same for the thread migration.
+  if (error && isMissingThread(error)) ({ data, error } = await select(false, false));
   if (error) throw error;
 
   // Assets in the private bucket are shown through signed links that last an hour.
@@ -71,6 +73,7 @@ export async function loadPosts() {
     hashtags: p.hashtags ?? [],
     thread: p.thread ?? [],
     externalUrl: p.external_url,
+    deletedAt: p.deleted_at ?? null,   // set: in the owner's bin, off the calendar
     assets: p.post_assets
       .sort((a, b) => a.position - b.position)
       .map((a) => toAsset(a, signed))
@@ -81,6 +84,7 @@ export async function loadPosts() {
   }));
 }
 
+const isMissing = (error, column) => error.code === "42703" || new RegExp(column).test(error.message ?? "") && /column|schema/.test(error.message ?? "");
 const isMissingThread = (error) => error.code === "42703" || /thread/.test(error.message ?? "") && /column|schema/.test(error.message ?? "");
 
 // A Drive file is shown through links that work without signing in: a thumbnail for the image,
@@ -208,15 +212,25 @@ export async function markPosted(post) {
   return { status: "published" };
 }
 
+// Deleting is the owner's alone, and it moves the post to the bin instead of erasing it: the post
+// leaves the calendar and the stats, the collector still knows the live post (so it isn't added
+// back), and restorePost brings it back. The database refuses both for anyone but the owner.
 export async function deletePost(post) {
-  if (!configured) return;
+  return setBinned(post, new Date().toISOString());
+}
+
+export async function restorePost(post) {
+  return setBinned(post, null);
+}
+
+async function setBinned(post, at) {
+  if (!configured) return { deletedAt: at };
   const supabase = await db();
-  const paths = post.assets.map((a) => a.storagePath).filter(Boolean);
-  const { data, error } = await supabase.from("posts").delete().eq("id", post.id).select("id");
+  const { data, error } = await supabase.from("posts").update({ deleted_at: at }).eq("id", post.id).select("id");
+  if (error && isMissing(error, "deleted_at")) throw new Error("Deleting needs the owner_deletes migration run in Supabase first.");
   if (error) throw new Error(error.message);
-  if (!data.length) throw new Error("Published posts stay for their stats. Change the status first to remove it.");
-  if (paths.length) await supabase.storage.from("post-assets").remove(paths);
-  await trashAll(post.assets);
+  if (!data.length) throw new Error("Only the calendar owner can delete or restore posts.");
+  return { deletedAt: at };
 }
 
 export async function deleteComment(id) {

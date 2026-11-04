@@ -1,7 +1,7 @@
 // The post composer: write or edit a post with its live preview beside it. Only shown to the editor;
 // the database refuses writes from anyone else whatever the page shows.
 
-import { savePost, deletePost, VIEWER_TIME_ZONE, zoneLabel, zonedToISO } from "./data.js";
+import { savePost, VIEWER_TIME_ZONE, zoneLabel, zonedToISO } from "./data.js";
 import { configured, signInWithGoogle } from "./supabase.js";
 import { driveAccess, driveProblem, DriveAccessError } from "./drive.js";
 
@@ -70,8 +70,9 @@ function parseTags(text) {
 
 // existing: a post to edit, or null for a new one. day: "YYYY-MM-DD" for a new post.
 // restore: a stashed draft ({ draft, removed }) to carry on with after signing in again.
-// preview(post) draws the platform preview; onSaved(post) and onDeleted(post) update the calendar.
-export function openComposer({ existing = null, day, restore = null, preview, onSaved, onDeleted }) {
+// preview(post) draws the platform preview; onSaved(post) updates the calendar. canDelete: the owner,
+// whose Delete calls onDelete(post), which moves it to the bin and resolves true once it is gone.
+export function openComposer({ existing = null, day, restore = null, preview, onSaved, canDelete = false, onDelete }) {
   const dialog = el("dialog", "composer");
   dialog.setAttribute("aria-labelledby", "composer-title");
 
@@ -187,15 +188,12 @@ export function openComposer({ existing = null, day, restore = null, preview, on
   cancel.type = "button";
   const right = el("div", "composer-actions");
   right.append(cancel, save);
-  if (existing && existing.status !== "published") {
+  if (existing && canDelete) {
     const del = el("button", "pill danger", "Delete");
     del.type = "button";
     del.addEventListener("click", async () => {
-      if (!confirm("Delete this post and its images? This can't be undone.")) return;
       try {
-        await deletePost(existing);
-        onDeleted(existing);
-        dialog.close();
+        if (await onDelete(existing)) dialog.close();
       } catch (err) {
         msg.textContent = err.message;
       }

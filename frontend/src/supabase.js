@@ -49,15 +49,17 @@ export async function signOut() {
 // Returns { email, name } for a signed-in editor, { email, name, editor: false } for anyone else
 // signed in, or null when nobody is. Sample mode has no accounts, so everyone is an editor there.
 export async function currentUser() {
-  if (!configured) return { email: "sample mode", editor: true };
+  if (!configured) return { email: "sample mode", editor: true, owner: true };
   const supabase = await db();
   const { data } = await supabase.auth.getSession();
   const session = data.session;
   if (!session) return null;
-  const { data: editor, error } = await supabase.rpc("is_editor");
+  // owner: the one editor who can delete posts (public.editors.owner, checked again by the database).
+  const [{ data: editor, error }, { data: owner, error: oe }] = await Promise.all([supabase.rpc("is_editor"), supabase.rpc("is_owner")]);
   const meta = session.user.user_metadata ?? {};
   const name = (meta.full_name || meta.name || "").trim();
-  return { email: session.user.email, name, editor: !error && editor === true };
+  const isEditor = !error && editor === true;
+  return { email: session.user.email, name, editor: isEditor, owner: isEditor && !oe && owner === true };
 }
 
 export async function onAuthChange(fn) {

@@ -1,4 +1,4 @@
-import { loadPosts, addComment, deleteComment, savePost, markPosted, COMMENT_LIMITS, dateIn, zoneLabel, TIME_ZONE, VIEWER_TIME_ZONE, ACCOUNTS } from "./data.js";
+import { loadPosts, addComment, deleteComment, savePost, markPosted, deletePost, restorePost, COMMENT_LIMITS, dateIn, zoneLabel, TIME_ZONE, VIEWER_TIME_ZONE, ACCOUNTS } from "./data.js";
 import { syncIfStale } from "./stats-data.js";
 import { currentUser, signInWithGoogle, signOut, onAuthChange } from "./supabase.js";
 import { openComposer, takeStashedDraft } from "./composer.js";
@@ -74,9 +74,31 @@ const state = {
   focusPost: null,
   // The signed-in editor, if any. Everyone else gets the read-and-comment calendar.
   user: null,
+  // Posts the owner deleted: off the calendar and the stats, restorable from the bin.
+  bin: [],
 };
 
 const isEditor = () => state.user?.editor === true;
+// The owner is the only one who can delete (and restore) posts; the database enforces it too.
+const isOwner = () => isEditor() && state.user?.owner === true;
+
+function setPosts(all) {
+  state.posts = all.filter((p) => !p.deletedAt);
+  state.bin = all.filter((p) => p.deletedAt).sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+  state.byDay = index(state.posts);
+}
+
+async function binPost(post) {
+  const what = post.status === "published"
+    ? "Delete this post from the calendar? It also leaves the stats. Delete it on the platform yourself; you can restore it here from the bin."
+    : "Delete this post from the calendar? You can restore it from the bin.";
+  if (!confirm(what)) return false;
+  Object.assign(post, await deletePost(post));
+  setPosts([...state.posts, ...state.bin]);
+  render();
+  renderAccount();
+  return true;
+}
 
 const monthFmt = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 const longDayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
@@ -452,6 +474,20 @@ function renderPost(post) {
     edit.type = "button";
     edit.addEventListener("click", () => compose(post));
     actions.prepend(edit);
+  }
+  if (isOwner()) {
+    const del = el("button", "pill danger", "Delete");
+    del.type = "button";
+    del.addEventListener("click", async () => {
+      del.disabled = true;
+      try {
+        if (!(await binPost(post))) del.disabled = false;
+      } catch (err) {
+        del.disabled = false;
+        del.textContent = `Couldn't delete: ${err.message}`;
+      }
+    });
+    actions.append(del);
   }
   if (isEditor() && post.platform === "discord" && post.status === "draft") {
     const done = el("button", "pill", "Mark posted");
@@ -1078,11 +1114,8 @@ function compose(existing = null, day = state.selected, restore = null) {
       upsertPost(saved);
       select(dayKeyFmt.format(new Date(saved.scheduledAt)), { post: saved.id, open: true });
     },
-    onDeleted: (gone) => {
-      state.posts = state.posts.filter((p) => p.id !== gone.id);
-      state.byDay = index(state.posts);
-      render();
-    },
+    canDelete: isOwner(),
+    onDelete: (post) => binPost(post),
   });
 }
 
@@ -1110,6 +1143,57 @@ function renderAccount() {
   out.type = "button";
   out.addEventListener("click", () => signOut());
   els.account.append(out);
+  if (isOwner() && state.bin.length) {
+    const bin = el("button", "link", `Deleted posts (${state.bin.length})`);
+    bin.type = "button";
+    bin.addEventListener("click", openBin);
+    els.account.append(bin);
+  }
+}
+
+// The owner's bin: deleted posts, newest first, each with Restore.
+function openBin() {
+  const dialog = el("dialog", "help bin");
+  dialog.setAttribute("aria-labelledby", "bin-title");
+  const title = el("h2", null, "Deleted posts");
+  title.id = "bin-title";
+  const list = el("ul", "bin-list");
+  const fill = () => {
+    list.replaceChildren();
+    if (!state.bin.length) list.append(el("li", "bin-empty", "Nothing in the bin."));
+    for (const post of state.bin) {
+      const li = el("li", "bin-item");
+      const when = `${PLATFORMS[post.platform]?.name ?? post.platform} · ${longDayFmt.format(new Date(post.scheduledAt))}, ${timeFmt.format(new Date(post.scheduledAt))}`;
+      const first = post.copy.split("\n").find((l) => l.trim())?.replace(/^#+ /, "").replace(/ ?:[a-z0-9_]+:/gi, "") ?? "";
+      const text = el("div", "bin-text");
+      text.append(el("span", "bin-when", when), el("span", "bin-copy", first));
+      const back = el("button", "pill", "Restore");
+      back.type = "button";
+      back.addEventListener("click", async () => {
+        back.disabled = true;
+        try {
+          Object.assign(post, await restorePost(post));
+          setPosts([...state.posts, ...state.bin]);
+          render();
+          renderAccount();
+          fill();
+        } catch (err) {
+          back.disabled = false;
+          back.textContent = `Couldn't restore: ${err.message}`;
+        }
+      });
+      li.append(text, back);
+      list.append(li);
+    }
+  };
+  fill();
+  const close = el("form");
+  close.method = "dialog";
+  close.append(el("button", "pill", "Close"));
+  dialog.append(title, list, close);
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
 }
 
 async function refreshUser() {
@@ -1142,9 +1226,9 @@ onAuthChange(refreshUser);
 
 const postsReady = loadPosts()
   .then((posts) => {
-    state.posts = posts;
-    state.byDay = index(posts);
+    setPosts(posts);
     render();
+    renderAccount();
   })
   .catch((err) => {
     console.error(err);
@@ -1156,8 +1240,7 @@ Promise.all([userReady, postsReady]).then(async () => {
   if (!isEditor()) return;
   const out = await syncIfStale().catch((err) => (console.error(err), null));
   if (!out?.results?.some((r) => r.posted)) return;
-  state.posts = await loadPosts();
-  state.byDay = index(state.posts);
+  setPosts(await loadPosts());
   render();
 });
 
