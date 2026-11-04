@@ -13,7 +13,7 @@
 //
 // Secrets (supabase secrets set …):
 //   COLLECTOR_SECRET                         required
-//   X_USERNAME                               for X; public numbers via FxTwitter, no key needed
+//   X_USERNAME                               optional, default silencioNetwork; public numbers via FxTwitter
 //   X_BEARER_TOKEN                           optional: the official X API instead (X_USER_ID skips the lookup)
 //   LINKEDIN_ACCESS_TOKEN, LINKEDIN_ORG_ID   for LinkedIn (needs the r_organization_social scope)
 //   LINKEDIN_VERSION                         optional, e.g. 202608
@@ -59,7 +59,7 @@ function sources(): { ready: Source[]; skipped: PlatformResult[] } {
 
   const xToken = env("X_BEARER_TOKEN");
   const xUser = env("X_USER_ID");
-  const xName = env("X_USERNAME");
+  const xName = env("X_USERNAME") ?? "silencioNetwork";    // the calendar is for this account
   if (xToken && (xUser || xName)) {
     const x = xClient(xToken);
     let id: Promise<string> | undefined;
