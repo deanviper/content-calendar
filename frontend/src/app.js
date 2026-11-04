@@ -905,11 +905,90 @@ function preview(post) {
 function previewDiscord(post) {
   const pv = el("div", "preview pv-dc");
   const main = el("div", "pv-dc-main");
-  main.append(discordBody(fullText(post)));
+  const text = fullText(post);
+  main.append(discordBody(text));
   const m = media(post);
   if (m) main.append(m);
+  // Discord unfurls up to five links under the message, in order; a link in <angle brackets> stays plain.
+  const links = [...text.matchAll(/\[X link\]|(<)?(https?:\/\/[^\s<>]+[^\s<>.,:;"')\]])>?/gi)]
+    .filter((l) => !l[1]).slice(0, 5);
+  for (const l of links) {
+    const url = l[2];
+    if (!url || /^https?:\/\/(www\.)?(x|twitter)\.com\/[^/]+\/status\//i.test(url)) main.append(xEmbed(post));
+    else main.append(linkEmbed(url));
+  }
   pv.append(main);
   return pv;
+}
+
+// The X post going out at the same time as this Discord post: what [X link] will point to.
+function pairedX(post) {
+  const at = Date.parse(post.scheduledAt);
+  return state.posts.find((p) => p.platform === "x" && Date.parse(p.scheduledAt) === at) ?? null;
+}
+
+// Discord's card for an X link: the account, the post text, its photo or video, and the X footer.
+function xEmbed(post) {
+  const x = pairedX(post);
+  const card = el("div", "pv-dc-embed pv-dc-x");
+  if (!x) {
+    card.append(el("p", "pv-dc-embed-note", "No X post at this time to preview"));
+    return card;
+  }
+  const acc = ACCOUNTS.x;
+  const head = el("div", "pv-dc-embed-author");
+  const avatar = el("img");
+  avatar.src = "assets/mark.svg";
+  avatar.alt = "";
+  head.append(avatar, el("span", null, `${acc.name} (${acc.handle})`));
+  const art = articleOf(x);
+  const body = el("div", "pv-dc-embed-text", art ? art.title : x.copy);
+  card.append(head, body);
+  const m = media(x);
+  if (m) card.append(m);
+  else if (art?.cover) {
+    const img = el("img", "pv-dc-embed-image");
+    img.src = art.cover.url;
+    img.alt = "";
+    card.append(img);
+  }
+  const foot = el("div", "pv-dc-embed-foot");
+  foot.append(icon("x"), `X • ${shortDayFmt.format(new Date(x.scheduledAt))}`);
+  card.append(foot);
+  return card;
+}
+
+// Discord's card for any other link, from the page's Open Graph tags (read by /api/og).
+const ogCache = new Map();
+function linkEmbed(url) {
+  const card = el("div", "pv-dc-embed");
+  card.append(el("p", "pv-dc-embed-note", "Loading link preview…"));
+  if (!ogCache.has(url)) {
+    ogCache.set(url, fetch(`api/og?url=${encodeURIComponent(url)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null));
+  }
+  ogCache.get(url).then((og) => {
+    if (!og || !(og.title || og.description)) { card.remove(); return; }   // Discord shows nothing then
+    if (og.color) card.style.borderLeftColor = og.color;
+    const parts = [el("div", "pv-dc-embed-site", og.site)];
+    if (og.title) {
+      const t = el("a", "pv-dc-embed-title", og.title);
+      t.href = url;
+      t.target = "_blank";
+      t.rel = "noopener";
+      parts.push(t);
+    }
+    if (og.description) parts.push(el("div", "pv-dc-embed-text", og.description));
+    if (og.image) {
+      const img = el("img", "pv-dc-embed-image");
+      img.src = og.image;
+      img.alt = "";
+      img.referrerPolicy = "no-referrer";
+      img.addEventListener("error", () => img.remove(), { once: true });
+      parts.push(img);
+    }
+    card.replaceChildren(...parts);
+  });
+  return card;
 }
 
 function discordBody(text) {
@@ -949,7 +1028,7 @@ function discordBody(text) {
 
 function discordInline(text) {
   const out = document.createDocumentFragment();
-  const re = /\*\*(.+?)\*\*|__(.+?)__|\*([^*\s][^*]*?)\*|`([^`]+)`|:([A-Za-z0-9_]+):|(@everyone|@here)|<(https?:\/\/[^>\s]+)>|(https?:\/\/[^\s<]+[^\s<.,:;"')\]])/g;
+  const re = /\*\*(.+?)\*\*|__(.+?)__|\*([^*\s][^*]*?)\*|`([^`]+)`|:([A-Za-z0-9_]+):|(@everyone|@here|@[A-Za-z][\w-]*)|<(https?:\/\/[^>\s]+)>|(https?:\/\/[^\s<]+[^\s<.,:;"')\]])/g;
   let last = 0;
   let m;
   while ((m = re.exec(text))) {

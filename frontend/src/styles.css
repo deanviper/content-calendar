@@ -720,3 +720,18 @@ kbd {
   .post-meta { gap: 8px; padding: 12px; }
   .post-body { padding: 4px 12px 12px; }
 }
+
+/* Discord link previews (embeds) under a message. */
+.pv-dc-embed { display: grid; gap: 8px; max-width: 432px; margin-top: 8px; padding: 10px 16px 14px 12px; border-left: 4px solid #1e1f22; border-radius: 4px; background: #2b2d31; font-size: 14px; line-height: 1.375; }
+.pv-dc-x { border-left-color: #1d9bf0; }
+.pv-dc-embed-author { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #f2f3f5; }
+.pv-dc-embed-author img { width: 24px; height: 24px; border-radius: 50%; }
+.pv-dc-embed-site { font-size: 12px; color: #dbdee1; }
+.pv-dc-embed-title { font-size: 16px; font-weight: 600; color: #00a8fc; text-decoration: none; }
+.pv-dc-embed-title:hover { text-decoration: underline; }
+.pv-dc-embed-text { white-space: pre-wrap; color: #dbdee1; }
+.pv-dc-embed-image { display: block; max-width: 100%; border-radius: 4px; }
+.pv-dc-embed .pv-media { max-width: 100%; margin-top: 0; border-radius: 4px; }
+.pv-dc-embed-foot { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #dbdee1; }
+.pv-dc-embed-foot .pf { width: 16px; height: 16px; color: #ffffff; }
+.pv-dc-embed-note { margin: 0; font-size: 13px; color: #949ba4; }
