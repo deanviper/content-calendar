@@ -13,7 +13,8 @@
 //
 // Secrets (supabase secrets set …):
 //   COLLECTOR_SECRET                         required
-//   X_BEARER_TOKEN, X_USERNAME               for X (X_USER_ID skips the username lookup)
+//   X_USERNAME                               for X; public numbers via FxTwitter, no key needed
+//   X_BEARER_TOKEN                           optional: the official X API instead (X_USER_ID skips the lookup)
 //   LINKEDIN_ACCESS_TOKEN, LINKEDIN_ORG_ID   for LinkedIn (needs the r_organization_social scope)
 //   LINKEDIN_VERSION                         optional, e.g. 202608
 //   LOOKBACK_DAYS                            optional, default 90
@@ -29,6 +30,7 @@ import {
   type PostMetrics,
   RateLimited,
   xClient,
+  fxClient,
 } from "../_shared/platforms.ts";
 import { type Draft, matchDraft } from "../_shared/match.ts";
 
@@ -68,8 +70,16 @@ function sources(): { ready: Source[]; skipped: PlatformResult[] } {
       metrics: (ids) => x.metrics(ids),
       discover: async (since) => x.timeline(await userId(), since),
     });
+  } else if (xName) {                                   // no API key: public numbers through FxTwitter
+    const fx = fxClient(xName);
+    ready.push({
+      platform: "x",
+      followers: () => fx.followers(),
+      metrics: (ids) => fx.metrics(ids),
+      discover: (since) => fx.timeline(since),
+    });
   } else {
-    skipped.push({ platform: "x", skipped: "X_BEARER_TOKEN and X_USERNAME are not set" });
+    skipped.push({ platform: "x", skipped: "X_USERNAME is not set" });
   }
 
   const liToken = env("LINKEDIN_ACCESS_TOKEN");

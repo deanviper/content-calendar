@@ -108,6 +108,80 @@ export function xClient(token: string, fetchFn: Fetch = fetch) {
   };
 }
 
+// X without an API key, through FxTwitter's public API (the service behind fxtwitter.com embeds). Same public
+// numbers as X's own (views, likes, reposts, replies, quotes, bookmarks), no clicks. Unofficial: it can rate
+// limit or change shape, so the bearer-token client above stays the first choice when a token is set.
+
+export const FX_API = "https://api.fxtwitter.com";
+const FX_HEADERS = { "User-Agent": "silencio-content-calendar/1.0" };
+
+export function parseFxMetrics(t: any): PostMetrics {
+  return {
+    externalId: String(t.id),
+    impressions: t.views ?? null,
+    likes: t.likes ?? null,
+    reposts: t.retweets ?? t.reposts ?? null,
+    replies: t.replies ?? null,
+    quotes: t.quotes ?? null,
+    bookmarks: t.bookmarks ?? null,
+    clicks: null,
+    raw: { views: t.views, likes: t.likes, retweets: t.retweets ?? t.reposts, replies: t.replies, quotes: t.quotes, bookmarks: t.bookmarks },
+  };
+}
+
+export function fxClient(username: string, fetchFn: Fetch = fetch) {
+  const user = encodeURIComponent(username);
+
+  return {
+    async followers(): Promise<{ followers: number; raw: unknown }> {
+      const body = await getJson(fetchFn, `${FX_API}/${user}`, FX_HEADERS);
+      return { followers: body.user.followers, raw: { followers: body.user.followers, following: body.user.following } };
+    },
+
+    // One request per post, five at a time; a post that is gone is skipped instead of failing the run.
+    async metrics(ids: string[]): Promise<PostMetrics[]> {
+      const out: PostMetrics[] = [];
+      for (const batch of chunks(ids, 5)) {
+        const got = await Promise.all(batch.map(async (id) => {
+          try {
+            const body = await getJson(fetchFn, `${FX_API}/${user}/status/${id}`, FX_HEADERS);
+            return body.tweet ? parseFxMetrics(body.tweet) : null;
+          } catch (e) {
+            if (e instanceof RateLimited) throw e;
+            return null;
+          }
+        }));
+        out.push(...got.filter((m): m is PostMetrics => m !== null));
+      }
+      return out;
+    },
+
+    // Original posts only (no replies or reposts), newest first, paged back to `since`.
+    async timeline(since?: string): Promise<FoundPost[]> {
+      const stop = since ? Date.parse(since) / 1000 : 0;
+      const found: FoundPost[] = [];
+      let cursor: string | undefined;
+      for (let page = 0; page < 20; page++) {
+        const body = await getJson(fetchFn, `${FX_API}/2/profile/${user}/statuses${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`, FX_HEADERS);
+        const results: any[] = body.results ?? [];
+        for (const t of results) {
+          if (t.replying_to || t.reposted_by || t.created_timestamp < stop) continue;
+          found.push({
+            externalId: String(t.id),
+            url: `https://x.com/${username}/status/${t.id}`,
+            copy: t.text ?? "",
+            publishedAt: new Date(t.created_timestamp * 1000).toISOString(),
+            metrics: parseFxMetrics(t),
+          });
+        }
+        cursor = body.cursor?.bottom;
+        if (!results.length || !cursor || Math.min(...results.map((t) => t.created_timestamp)) < stop) break;
+      }
+      return found;
+    },
+  };
+}
+
 // LinkedIn Community Management API, for an organization page the token can administer.
 
 export const LINKEDIN_API = "https://api.linkedin.com/rest";
