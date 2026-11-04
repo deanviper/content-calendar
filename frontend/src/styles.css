@@ -348,7 +348,7 @@ html:has(.day[open]) { overflow: hidden; }
   margin: 0 auto;
 }
 
-.post { min-width: 0; border-radius: 16px; background: var(--surface); }
+.post { min-width: 0; border: 1px solid var(--line-strong); border-radius: 16px; }
 
 .post-meta {
   display: flex;
@@ -574,7 +574,7 @@ kbd {
   .day { width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; }
   .sheet { padding: 0 16px 24px; }
   .sheet-head { flex-direction: column; gap: 12px; margin: 0 -16px 12px; padding: 20px 16px 12px; }
-  .posts { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+  .posts { gap: 8px; }
   .comment-form { grid-template-columns: 1fr auto; }
   .comment-form input { grid-column: 1 / -1; }
   .pill, .icon-btn { height: 44px; }
@@ -711,3 +711,12 @@ kbd {
 .pv-dc-link:hover { text-decoration: underline; }
 .pv-dc-code { padding: 0 0.2em; border-radius: 4px; background: #2b2d31; font-size: 85%; }
 .pv-dc .pv-media { max-width: 420px; margin-top: 8px; border-radius: 8px; }
+
+/* Small phones: the top bar's two switches and the theme button have to fit one row. */
+@media (max-width: 480px) {
+  .bar-controls { gap: 6px; }
+  .segmented button { min-width: 0; padding: 0 10px; }
+  .segmented button .pf { width: 14px; height: 14px; }
+  .post-meta { gap: 8px; padding: 12px; }
+  .post-body { padding: 4px 12px 12px; }
+}
