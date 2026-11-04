@@ -236,8 +236,8 @@ const CORS = {
 };
 
 // The stats page sends the editor's session, checked against the editors table with the caller's
-// own rights. A secret-holding scheduler may also call. Anyone else (the daily pg_cron job, which
-// only has the public anon key) gets a plain daily collect, and only when the last one is 20 hours
+// own rights. A secret-holding scheduler may also call. Anyone else (the daily GitHub Actions job, which
+// only has the public key) gets a plain daily collect, and only when the last one is 20 hours
 // old: it reads public numbers, so the worst a stranger can do is run tomorrow's pull early.
 async function allowed(req: Request): Promise<boolean> {
   const secret = env("COLLECTOR_SECRET");
