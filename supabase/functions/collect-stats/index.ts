@@ -15,7 +15,8 @@
 //   COLLECTOR_SECRET                         required
 //   X_USERNAME                               optional, default silencioNetwork; public numbers via FxTwitter
 //   X_BEARER_TOKEN                           optional: the official X API instead (X_USER_ID skips the lookup)
-//   LINKEDIN_ACCESS_TOKEN, LINKEDIN_ORG_ID   for LinkedIn (needs the r_organization_social scope)
+//   LINKEDIN_PAGE                            optional, default silencioai: the public company page is read
+//   LINKEDIN_ACCESS_TOKEN, LINKEDIN_ORG_ID   optional: the official API instead (needs r_organization_social)
 //   LINKEDIN_VERSION                         optional, e.g. 202608
 //   LOOKBACK_DAYS                            optional, default 90
 //   DISCOVER_DAYS                            optional, default 7
@@ -30,7 +31,8 @@ import {
   type PostMetrics,
   RateLimited,
   xClient,
-  fxClient,
+  linkedInPublicClient,
+  xPublicClient,
 } from "../_shared/platforms.ts";
 import { type Draft, matchDraft } from "../_shared/match.ts";
 
@@ -70,8 +72,8 @@ function sources(): { ready: Source[]; skipped: PlatformResult[] } {
       metrics: (ids) => x.metrics(ids),
       discover: async (since) => x.timeline(await userId(), since),
     });
-  } else if (xName) {                                   // no API key: public numbers through FxTwitter
-    const fx = fxClient(xName);
+  } else if (xName) {                                   // no API key: public numbers, FxTwitter first with backups
+    const fx = xPublicClient(xName);
     ready.push({
       platform: "x",
       followers: () => fx.followers(),
@@ -92,8 +94,14 @@ function sources(): { ready: Source[]; skipped: PlatformResult[] } {
       metrics: (ids) => li.metrics(ids),
       discover: (since) => li.posts(since),
     });
-  } else {
-    skipped.push({ platform: "linkedin", skipped: "LINKEDIN_ACCESS_TOKEN and LINKEDIN_ORG_ID are not set" });
+  } else {                                              // no API token: the public company page
+    const li = linkedInPublicClient(env("LINKEDIN_PAGE") ?? "silencioai");
+    ready.push({
+      platform: "linkedin",
+      followers: () => li.followers(),
+      metrics: (ids) => li.metrics(ids),
+      discover: (since) => li.posts(since),
+    });
   }
 
   return { ready, skipped };
@@ -153,8 +161,15 @@ async function syncPosts(db: SupabaseClient, platform: Platform, found: FoundPos
 async function collect(db: SupabaseClient, source: Source, capturedAt: string, opts: { backfill: boolean; since?: string; lookbackDays: number; discoverDays: number }): Promise<PlatformResult> {
   const result: PlatformResult = { platform: source.platform };
 
+  // Each step stands alone: a source that fails to list new posts or followers still lets the known
+  // posts get their numbers, and the failure is reported instead of ending the run.
+  const notes: string[] = [];
   const discoverFrom = opts.backfill ? opts.since : new Date(Date.now() - opts.discoverDays * 86_400_000).toISOString();
-  Object.assign(result, await syncPosts(db, source.platform, await source.discover(discoverFrom)));
+  try {
+    Object.assign(result, await syncPosts(db, source.platform, await source.discover(discoverFrom)));
+  } catch (e) {
+    notes.push(`finding new posts: ${(e as Error).message}`);
+  }
 
   const from = opts.backfill && opts.since
     ? opts.since
@@ -170,21 +185,26 @@ async function collect(db: SupabaseClient, source: Source, capturedAt: string, o
 
   const byExternal = new Map(posts.map((p) => [p.external_id as string, p.id as string]));
   const metrics = byExternal.size ? await source.metrics([...byExternal.keys()]) : [];
+  // A backup source sees fewer numbers (no views on vxTwitter, no impressions on LinkedIn pages): fill
+  // its gaps from the post's previous snapshot so a fallback day never looks like a drop to zero.
+  const ids = metrics.map((m) => byExternal.get(m.externalId)).filter(Boolean) as string[];
+  const prev = new Map<string, Record<string, number | null>>();
+  if (ids.length) {
+    const { data: last } = await db.from("post_metric_snapshots").select("post_id, impressions, likes, reposts, replies, quotes, bookmarks, clicks")
+      .in("post_id", ids).order("captured_at", { ascending: false });
+    for (const row of last ?? []) if (!prev.has(row.post_id)) prev.set(row.post_id, row);
+  }
+  const FIELDS = ["impressions", "likes", "reposts", "replies", "quotes", "bookmarks", "clicks"] as const;
   const snapshots = metrics
     .filter((m) => byExternal.has(m.externalId))
-    .map((m) => ({
-      post_id: byExternal.get(m.externalId),
-      captured_at: capturedAt,
-      source: "api",
-      impressions: m.impressions,
-      likes: m.likes,
-      reposts: m.reposts,
-      replies: m.replies,
-      quotes: m.quotes,
-      bookmarks: m.bookmarks,
-      clicks: m.clicks,
-      raw: m.raw,
-    }));
+    .map((m) => {
+      const postId = byExternal.get(m.externalId)!;
+      const before = prev.get(postId);
+      const row: Record<string, unknown> = { post_id: postId, captured_at: capturedAt, source: "api", raw: m.raw };
+      for (const f of FIELDS) row[f] = m[f] ?? before?.[f] ?? null;
+      return row;
+    });
+  if (metrics.length < byExternal.size) notes.push(`no numbers for ${byExternal.size - metrics.length} of ${byExternal.size} posts`);
   if (snapshots.length) {
     const { error: e } = await db.from("post_metric_snapshots")
       .upsert(snapshots, { onConflict: "post_id,captured_at", ignoreDuplicates: true });
@@ -192,14 +212,19 @@ async function collect(db: SupabaseClient, source: Source, capturedAt: string, o
   }
   result.snapshots = snapshots.length;
 
-  const f = await source.followers();
-  const { error: fe } = await db.from("account_metric_snapshots").upsert(
-    { platform: source.platform, captured_at: capturedAt, source: "api", followers: f.followers, raw: f.raw },
-    { onConflict: "platform,captured_at", ignoreDuplicates: true },
-  );
-  if (fe) throw new Error(`saving followers: ${fe.message}`);
-  result.followers = f.followers;
+  try {
+    const f = await source.followers();
+    const { error: fe } = await db.from("account_metric_snapshots").upsert(
+      { platform: source.platform, captured_at: capturedAt, source: "api", followers: f.followers, raw: f.raw },
+      { onConflict: "platform,captured_at", ignoreDuplicates: true },
+    );
+    if (fe) throw new Error(fe.message);
+    result.followers = f.followers;
+  } catch (e) {
+    notes.push(`followers: ${(e as Error).message}`);
+  }
 
+  if (notes.length) result.error = notes.join("; ");
   return result;
 }
 
