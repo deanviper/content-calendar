@@ -900,23 +900,15 @@ function preview(post) {
 // A Discord message as the server shows it: channel bar, avatar, name and time, then the text with
 // Discord's markdown (# headings, **bold**, *italic*, __underline__, > quotes, - lists, -# small
 // text, `code`, links) and the server's custom :emoji:.
+// Just the message as Discord will show it: the text with Discord's markdown and emoji, then any
+// photo or video. Joaquin posts it himself, so there is no account bar.
 function previewDiscord(post) {
-  const acc = ACCOUNTS.discord;
   const pv = el("div", "preview pv-dc");
-  const channel = el("div", "pv-dc-channel");
-  channel.append(el("span", "pv-dc-hash", "#"), acc.handle);
-  const msg = el("div", "pv-dc-msg");
-  const avatar = el("img", "pv-dc-avatar");
-  avatar.src = "assets/mark.svg";
-  avatar.alt = "";
   const main = el("div", "pv-dc-main");
-  const head = el("div", "pv-dc-head");
-  head.append(el("span", "pv-dc-name", acc.name), el("span", "pv-dc-time", `${shortDayFmt.format(new Date(post.scheduledAt))}, ${timeFmt.format(new Date(post.scheduledAt))}`));
-  main.append(head, discordBody(fullText(post)));
+  main.append(discordBody(fullText(post)));
   const m = media(post);
   if (m) main.append(m);
-  msg.append(avatar, main);
-  pv.append(channel, msg);
+  pv.append(main);
   return pv;
 }
 

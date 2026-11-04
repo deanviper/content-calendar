@@ -690,7 +690,7 @@ kbd {
 .pv-dc-hash { color: #80848e; font-size: 20px; font-weight: 400; line-height: 1; }
 .pv-dc-msg { display: flex; gap: 16px; padding: 14px 16px 18px; }
 .pv-dc-avatar { flex: none; width: 40px; height: 40px; border-radius: 50%; }
-.pv-dc-main { flex: 1; min-width: 0; }
+.pv-dc-main { min-width: 0; padding: 14px 16px 16px; }
 .pv-dc-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
 .pv-dc-name { font-size: 16px; font-weight: 500; color: #f2f3f5; }
 .pv-dc-time { font-size: 12px; color: #949ba4; }
