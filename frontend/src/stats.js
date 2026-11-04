@@ -87,8 +87,15 @@ function postSums(from, to) {
   const impressions = seen.reduce((s, p) => s + p.impressions, 0);
   const seenEng = seen.reduce((s, p) => s + p.engagements, 0);
   const engagements = posts.reduce((s, p) => s + p.engagements, 0);
+  const sorted = seen.map((p) => p.impressions).sort((a, b) => a - b);
+  const median = sorted.length ? (sorted[(sorted.length - 1) >> 1] + sorted[sorted.length >> 1]) / 2 : null;
+  // A post with more than 10x the typical reach (a boosted or viral one) gets named, so it can't
+  // quietly swing a total.
+  const outliers = median ? seen.filter((p) => p.impressions > median * 10) : [];
   return {
     posts: posts.length,
+    median,
+    outliers,
     impressions,
     engagements,
     rate: impressions ? seenEng / impressions : null,
@@ -129,6 +136,12 @@ function delta(now, before, { points = false } = {}) {
   return { text: `${d > 0 ? "▲" : "▼"} ${pct.format(Math.abs(d))}`, tone: d > 0 ? "good" : "bad" };
 }
 
+function withOutliers(d, now, before) {
+  const name = (o, when) => `${when} one ${compact.format(o.impressions)} post on ${dayFmt.format(new Date(o.publishedAt))}`;
+  const notes = [...(now.outliers ?? []).map((o) => name(o, "incl.")), ...(before?.outliers ?? []).map((o) => name(o, "before had"))];
+  return notes.length ? { ...d, text: `${d.text} · ${notes.join(", ")}` } : d;
+}
+
 function renderKpis(w) {
   const now = postSums(w.start, w.end);
   const before = w.prevStart >= firstPostDay() ? postSums(w.prevStart, w.prevEnd) : null;
@@ -139,8 +152,8 @@ function renderKpis(w) {
   const gainedBefore = fStart != null && fPrevStart != null ? fStart - fPrevStart : null;
 
   const items = [
-    { label: "Impressions", value: compact.format(now.impressions), d: delta(now.impressions, before?.impressions) },
-    { label: "Impressions per post", value: now.perPost == null ? "–" : compact.format(now.perPost), d: delta(now.perPost, before?.perPost) },
+    { label: "Impressions", value: compact.format(now.impressions), d: withOutliers(delta(now.impressions, before?.impressions), now, before) },
+    { label: "Typical post (median)", value: now.median == null ? "–" : compact.format(now.median), d: delta(now.median, before?.median) },
     { label: "Engagements", value: compact.format(now.engagements), d: delta(now.engagements, before?.engagements) },
     { label: "Engagement rate", value: now.rate == null ? "–" : pct.format(now.rate), d: delta(now.rate, before?.rate, { points: true }) },
     { label: "Followers", value: fNow == null ? "–" : compact.format(fNow), d: gained == null ? { text: "daily history starts today", tone: "flat" } : { text: `${gained >= 0 ? "+" : ""}${whole.format(gained)} in range${gainedBefore != null ? `, ${gainedBefore >= 0 ? "+" : ""}${whole.format(gainedBefore)} before` : ""}`, tone: gainedBefore == null || gained === gainedBefore ? "flat" : gained > gainedBefore ? "good" : "bad" } },
@@ -269,7 +282,8 @@ function renderMarkerCompare() {
   const b = side(addDays(day, -nBefore), addDays(day, -1), nBefore);
   const a = side(day, todayKey, after);
   const rows = [
-    ["Impressions per post", (v) => whole.format(Math.round(v)), b.perPost, a.perPost],
+    ["Typical post (median impressions)", (v) => whole.format(Math.round(v)), b.median, a.median],
+    ["Average impressions per post", (v) => whole.format(Math.round(v)), b.perPost, a.perPost],
     ["Engagements per post", (v) => whole.format(Math.round(v)), b.engPerPost, a.engPerPost],
     ["Engagement rate", (v) => pct.format(v), b.rate, a.rate, true],
     ["Posts per week", (v) => v.toFixed(1), b.perWeek, a.perWeek],
