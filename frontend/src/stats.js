@@ -1,4 +1,4 @@
-import { loadStats, addMarker, resync } from "./stats-data.js";
+import { loadStats, addMarker, resync, syncIfStale } from "./stats-data.js";
 import { utcDate } from "./data.js";
 import { initThemeToggle } from "./theme.js";
 
@@ -647,10 +647,15 @@ $("resync").addEventListener("click", async (e) => {
 });
 
 loadStats()
-  .then((data) => {
+  .then(async (data) => {
     state.data = data;
     render();
     showLastSync();
+    if (await syncIfStale().catch(() => null)) {           // older than a day: pull fresh numbers, then redraw
+      state.data = await loadStats();
+      render();
+      showLastSync();
+    }
   })
   .catch((err) => {
     console.error(err);
