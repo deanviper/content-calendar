@@ -39,6 +39,7 @@ export async function loadStats() {
       publishedAt: p.published_at,
       impressions: p.impressions ?? 0,
       engagements: p.engagements ?? 0,
+      likes: p.likes ?? 0,
       rate: p.engagement_rate == null ? null : Number(p.engagement_rate),
       baselineImpressions: p.baseline_impressions,
       baselineAt: p.baseline_at,

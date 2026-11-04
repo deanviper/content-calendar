@@ -75,7 +75,15 @@ function followerTotal(day) {
   return total;
 }
 
-function postsBetween(from, to) {
+// Paid posts stay in the posts table, tagged, but are left out of every total, average and chart:
+// a promoted reach number says nothing about how the organic content is doing. Keyed by post URL id.
+const PROMOTED = {
+  "2102693411484754118": "Wolof campaign, 23 Sep",
+};
+const promoted = (p) => Object.keys(PROMOTED).some((id) => p.url?.includes(id));
+
+function postsBetween(from, to, { withPromoted = false } = {}) {
+  if (!withPromoted) return postsBetween(from, to, { withPromoted: true }).filter((p) => !promoted(p));
   return state.data.posts.filter((p) => platforms().includes(p.platform) && manilaDay(p.publishedAt) >= from && manilaDay(p.publishedAt) <= to);
 }
 
@@ -86,6 +94,7 @@ function postSums(from, to) {
   const seen = posts.filter((p) => p.impressions > 0);         // LinkedIn hides impressions from non-admins
   const impressions = seen.reduce((s, p) => s + p.impressions, 0);
   const seenEng = seen.reduce((s, p) => s + p.engagements, 0);
+  const seenLikes = seen.reduce((s, p) => s + p.likes, 0);
   const engagements = posts.reduce((s, p) => s + p.engagements, 0);
   const sorted = seen.map((p) => p.impressions).sort((a, b) => a - b);
   const median = sorted.length ? (sorted[(sorted.length - 1) >> 1] + sorted[sorted.length >> 1]) / 2 : null;
@@ -100,7 +109,10 @@ function postSums(from, to) {
     engagements,
     rate: impressions ? seenEng / impressions : null,
     perPost: seen.length ? impressions / seen.length : null,
-    engPerPost: posts.length ? engagements / posts.length : null,
+    // Per-post and rate figures use posts that report views (X), so LinkedIn's small,
+    // view-less posts don't drag the average in the "All" view.
+    engPerPost: seen.length ? seenEng / seen.length : null,
+    likeRate: impressions ? seenLikes / impressions : null,
   };
 }
 
@@ -145,18 +157,13 @@ function withOutliers(d, now, before) {
 function renderKpis(w) {
   const now = postSums(w.start, w.end);
   const before = w.prevStart >= firstPostDay() ? postSums(w.prevStart, w.prevEnd) : null;
-  const fNow = followerTotal(w.end);
-  const fStart = followerTotal(addDays(w.start, -1));
-  const fPrevStart = followerTotal(addDays(w.prevStart, -1));
-  const gained = fNow != null && fStart != null ? fNow - fStart : null;
-  const gainedBefore = fStart != null && fPrevStart != null ? fStart - fPrevStart : null;
 
   const items = [
     { label: "Impressions", value: compact.format(now.impressions), d: withOutliers(delta(now.impressions, before?.impressions), now, before) },
     { label: "Typical post (median)", value: now.median == null ? "–" : compact.format(now.median), d: delta(now.median, before?.median) },
-    { label: "Engagements", value: compact.format(now.engagements), d: delta(now.engagements, before?.engagements) },
+    { label: "Engagements per post", value: now.engPerPost == null ? "–" : whole.format(Math.round(now.engPerPost)), d: delta(now.engPerPost, before?.engPerPost) },
     { label: "Engagement rate", value: now.rate == null ? "–" : pct.format(now.rate), d: delta(now.rate, before?.rate, { points: true }) },
-    { label: "Followers", value: fNow == null ? "–" : compact.format(fNow), d: gained == null ? { text: "daily history starts today", tone: "flat" } : { text: `${gained >= 0 ? "+" : ""}${whole.format(gained)} in range${gainedBefore != null ? `, ${gainedBefore >= 0 ? "+" : ""}${whole.format(gainedBefore)} before` : ""}`, tone: gainedBefore == null || gained === gainedBefore ? "flat" : gained > gainedBefore ? "good" : "bad" } },
+    { label: "Like rate", value: now.likeRate == null ? "–" : pct.format(now.likeRate), d: now.likeRate == null ? { text: "–", tone: "flat" } : { text: `floor 1.3% · ${delta(now.likeRate, before?.likeRate, { points: true }).text}`, tone: now.likeRate >= 0.013 ? "good" : "bad" } },
     { label: "Posts published", value: whole.format(now.posts), d: before == null ? { text: "no earlier data to compare", tone: "flat" } : { text: `${whole.format(before.posts)} the ${w.days} days before`, tone: "flat" } },
   ];
   $("kpis").replaceChildren(...items.map((k) => {
@@ -286,6 +293,7 @@ function renderMarkerCompare() {
     ["Average impressions per post", (v) => whole.format(Math.round(v)), b.perPost, a.perPost],
     ["Engagements per post", (v) => whole.format(Math.round(v)), b.engPerPost, a.engPerPost],
     ["Engagement rate", (v) => pct.format(v), b.rate, a.rate, true],
+    ["Like rate (floor 1.3%)", (v) => pct.format(v), b.likeRate, a.likeRate, true],
     ["Posts per week", (v) => v.toFixed(1), b.perWeek, a.perWeek],
     ["Followers gained per day", (v) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}`, b.followers, a.followers],
   ];
@@ -323,7 +331,7 @@ let showAll = false;
 const TOP = 10;
 
 function renderPosts(w) {
-  const posts = postsBetween(w.start, w.end).sort((a, b) => {
+  const posts = postsBetween(w.start, w.end, { withPromoted: true }).sort((a, b) => {
     const va = SORTS[sort.key](a);
     const vb = SORTS[sort.key](b);
     return (va > vb ? 1 : va < vb ? -1 : 0) * sort.dir;
@@ -371,6 +379,7 @@ function renderPosts(w) {
     const copy = p.url ? el("a", "post-copy", p.copy) : el("span", "post-copy", p.copy);
     if (p.url) { copy.href = p.url; copy.target = "_blank"; copy.rel = "noopener"; }
     post.append(name, copy);
+    if (promoted(p)) post.append(el("span", "promo-tag", "Promoted · not counted in totals"));
     const growth = p.baselineImpressions == null ? null : p.impressions - p.baselineImpressions;
     tr.append(
       post,
