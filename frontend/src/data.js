@@ -35,6 +35,7 @@ export const TIME_ZONE_LABEL = "UTC";
 export const ACCOUNTS = {
   x: { name: "Silencio | Voice Data for AI", handle: "@silencioNetwork", badge: "gold" },
   linkedin: { name: "Silencio Voice AI", handle: "7,781 followers", badge: null },
+  discord: { name: "Silencio", handle: "announcements", badge: null },
 };
 
 export async function loadPosts() {
@@ -195,6 +196,16 @@ export async function savePost(post, { files = [], removed = [], existing = null
   }
 
   return { ...post, id, assets: [...keptAssets, ...added], comments: existing?.comments ?? [] };
+}
+
+// Discord has no collector: a Discord post is marked posted by hand once it is up in the server.
+export async function markPosted(post) {
+  const at = new Date().toISOString();
+  if (!configured) return { status: "published" };
+  const supabase = await db();
+  const { error } = await supabase.from("posts").update({ status: "published", published_at: at }).eq("id", post.id);
+  if (error) throw new Error(error.message);
+  return { status: "published" };
 }
 
 export async function deletePost(post) {

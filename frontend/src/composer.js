@@ -19,7 +19,7 @@ export function takeStashedDraft() {
   }
 }
 
-const PLATFORM_LIMITS = { x: 280, linkedin: 3000 };
+const PLATFORM_LIMITS = { x: 280, linkedin: 3000, discord: 2000 };
 
 // Dates and times are written in the editor's own time zone and saved as the moment they stand for.
 const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: VIEWER_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" });
@@ -93,7 +93,7 @@ export function openComposer({ existing = null, day, restore = null, preview, on
   head.append(title, close);
 
   const form = el("form", "composer-form");
-  const platform = segmented("Platform", [["x", "X"], ["linkedin", "LinkedIn"]], base?.platform ?? "x");
+  const platform = segmented("Platform", [["x", "X"], ["linkedin", "LinkedIn"], ["discord", "Discord"]], base?.platform ?? "x");
 
   const date = el("input", "field");
   date.type = "date";

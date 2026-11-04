@@ -1,4 +1,4 @@
-import { loadPosts, addComment, deleteComment, savePost, COMMENT_LIMITS, dateIn, zoneLabel, TIME_ZONE, VIEWER_TIME_ZONE, ACCOUNTS } from "./data.js";
+import { loadPosts, addComment, deleteComment, savePost, markPosted, COMMENT_LIMITS, dateIn, zoneLabel, TIME_ZONE, VIEWER_TIME_ZONE, ACCOUNTS } from "./data.js";
 import { syncIfStale } from "./stats-data.js";
 import { currentUser, signInWithGoogle, signOut, onAuthChange } from "./supabase.js";
 import { openComposer, takeStashedDraft } from "./composer.js";
@@ -7,21 +7,18 @@ import { initThemeToggle } from "./theme.js";
 const PLATFORMS = {
   x: { name: "X", limit: 280 },
   linkedin: { name: "LinkedIn", limit: 3000, fold: 210 },
+  // Discord posts are planned here and posted by hand in the server; Mark posted closes them.
+  discord: { name: "Discord", limit: 2000 },
 };
+// Custom server emoji the Discord preview draws, by their :code:.
+// Keys are lower case; Discord matches emoji codes without regard to case.
+const DISCORD_EMOJI = { slcwhite: "assets/slc-white.svg" };
 // Order is the order of the status filters and of the workflow.
 // A post is a draft until the stats collector finds it live on X or LinkedIn, then it is posted.
 const STATUSES = {
   draft: "Draft",
   published: "Posted",
 };
-// Every X post is news for the community, so it gets echoed in Discord too. A post counts as
-// echoed once it has a comment starting with ECHO_MARK (the button on the post adds one), which
-// also leaves a visible note of who did it and when. Only posts from 4 Nov 2026 on are tracked.
-const ECHO_MARK = "✓ Echoed to Discord";
-const ECHO_FROM = "2026-11-04";
-const echoed = (post) => post.comments.some((c) => c.body.startsWith(ECHO_MARK));
-const needsEcho = (post) => post.platform === "x" && post.scheduledAt >= ECHO_FROM && !echoed(post);
-
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_LINES = 3;
 
@@ -37,7 +34,6 @@ const els = {
   day: $("day"),
   player: $("player"),
   newPost: $("new-post"),
-  echo: $("echo"),
   account: $("account"),
 };
 
@@ -70,6 +66,7 @@ const state = {
   byDay: new Map(),
   view: "month",
   platform: "all",
+  expanded: new Set(),   // posts opened in the day pop-up
   statuses: new Set(Object.keys(STATUSES)),
   selected: parseHash() ?? todayKey,
   // The selected day opens in a pop-up; closing it keeps the selection. A link to a day opens it.
@@ -197,7 +194,10 @@ function render() {
 
   const per = (pf) => shown.filter((p) => p.platform === pf).length;
   const sub = [shown.length ? plural(shown.length, "post") : `Nothing planned this ${state.view} yet`];
-  if (shown.length && state.platform === "all") sub.push(`${per("x")} on X`, `${per("linkedin")} on LinkedIn`);
+  if (shown.length && state.platform === "all") {
+    sub.push(`${per("x")} on X`, `${per("linkedin")} on LinkedIn`);
+    if (per("discord")) sub.push(`${per("discord")} on Discord`);
+  }
   sub.push(`times in ${zone === VIEWER_TIME_ZONE && zone !== TIME_ZONE ? `your time, ${zoneLabel(zone)}` : zoneLabel(zone)}`);
   els.sub.textContent = sub.join(" · ");
   if (VIEWER_TIME_ZONE !== TIME_ZONE) {
@@ -241,26 +241,7 @@ function renderGrid(keys) {
     rows.push(row);
   }
   els.weeks.replaceChildren(...rows);
-  renderEcho();
   renderDay();
-}
-
-// Reminder strip: posts that went out on X but haven't been shared in Discord yet.
-function renderEcho() {
-  const due = state.posts.filter((p) => p.status === "published" && needsEcho(p))
-    .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
-  els.echo.hidden = !due.length;
-  if (!due.length) return;
-  const items = due.map((p) => {
-    const b = el("button", "link", `${shortDayFmt.format(new Date(p.scheduledAt))}: ${p.copy.split("\n")[0].replace(/^# /, "").slice(0, 60)}`);
-    b.type = "button";
-    b.addEventListener("click", () => select(dayKeyFmt.format(new Date(p.scheduledAt)), { post: p.id, open: true }));
-    return b;
-  });
-  els.echo.replaceChildren(
-    el("strong", null, `Echo in Discord: ${plural(due.length, "post")} on X not shared there yet`),
-    ...items,
-  );
 }
 
 // The open day shows in a pop-up over the calendar. It re-renders with the grid and keeps its
@@ -272,6 +253,7 @@ function renderDay() {
   }
   const top = els.day.dataset.key === state.selected ? els.day.scrollTop : 0;
   els.day.dataset.key = state.selected;
+  if (state.focusPost) state.expanded.add(state.focusPost);
   els.day.setAttribute("aria-label", longDayFmt.format(fromKey(state.selected)));
   els.day.replaceChildren(renderSheet(state.selected));
   if (!els.day.open) els.day.showModal();
@@ -325,11 +307,6 @@ function renderLine(post) {
   const line = el("span", `line s-${post.status}`);
   line.dataset.post = post.id;
   line.append(mark(post.status), el("span", "line-time", timeFmt.format(new Date(post.scheduledAt))), icon(post.platform));
-  if (post.status === "published" && needsEcho(post)) {
-    const badge = el("span", "echo-badge", "Discord");
-    badge.title = "Not echoed in Discord yet";
-    line.append(badge);
-  }
   if (state.view === "week") {
     line.append(el("span", "line-text", post.copy.split("\n")[0]));
     if (post.status === "draft") line.append(el("span", "line-status", STATUSES.draft));
@@ -389,40 +366,16 @@ function renderSheet(k) {
   return sheet;
 }
 
-function echoRow(post) {
-  const row = el("div", "echo-row");
-  const done = post.comments.find((c) => c.body.startsWith(ECHO_MARK));
-  if (done) {
-    row.classList.add("done");
-    row.append(el("span", null, `Echoed in Discord by ${done.authorName}, ${commentTimeFmt.format(new Date(done.createdAt))}`));
-    return row;
-  }
-  row.append(el("span", null, post.status === "published" ? "Not echoed in Discord yet" : "After it goes out, echo it in Discord"));
-  if (state.user) {
-    const btn = el("button", "pill", "Mark echoed");
-    btn.type = "button";
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      try {
-        const who = state.user.name ? state.user.name.split(/\s+/)[0] : state.user.email.split("@")[0];
-        post.comments.push(await addComment(post.id, who, ECHO_MARK));
-        render();
-      } catch (err) {
-        btn.disabled = false;
-        btn.textContent = `Couldn't save: ${err.message}`;
-      }
-    });
-    row.append(btn);
-  }
-  return row;
-}
-
 function renderPost(post) {
   const platform = PLATFORMS[post.platform];
   const article = el("article", `post s-${post.status}`);
   article.dataset.post = post.id;
 
-  const meta = el("header", "post-meta");
+  // A row per post: platform, time, first line, status. Clicking it opens the full preview.
+  const open = state.expanded.has(post.id);
+  const meta = el("button", "post-meta");
+  meta.type = "button";
+  meta.setAttribute("aria-expanded", String(open));
   const name = el("span", "post-platform");
   name.setAttribute("role", "img");
   name.setAttribute("aria-label", platform.name);
@@ -432,10 +385,20 @@ function renderPost(post) {
   time.dateTime = post.scheduledAt;
   const status = el("span", `status s-${post.status}`);
   status.append(mark(post.status), STATUSES[post.status] ?? post.status);
-  meta.append(name, time, status);
-  article.append(meta);
-  if (post.platform === "x" && post.scheduledAt >= ECHO_FROM) article.append(echoRow(post));
-  article.append(post.platform === "x" ? previewX(post) : previewLinkedIn(post));
+  const snippet = el("span", "post-snippet", post.copy.split("\n").find((l) => l.trim())?.replace(/^#+ /, "").replace(/ ?:[a-z0-9_]+:/gi, "") ?? "");
+  const chevron = el("span", "post-chevron");
+  chevron.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+  meta.append(name, time, snippet, status, chevron);
+  const body = el("div", "post-body");
+  body.hidden = !open;
+  meta.addEventListener("click", () => {
+    const now = body.hidden;
+    body.hidden = !now;
+    meta.setAttribute("aria-expanded", String(now));
+    if (now) state.expanded.add(post.id); else state.expanded.delete(post.id);
+  });
+  article.append(meta, body);
+  body.append(preview(post));
 
   const length = fullText(post).length;
   const thread = post.platform === "x" ? post.thread ?? [] : [];
@@ -490,8 +453,23 @@ function renderPost(post) {
     edit.addEventListener("click", () => compose(post));
     actions.prepend(edit);
   }
+  if (isEditor() && post.platform === "discord" && post.status === "draft") {
+    const done = el("button", "pill", "Mark posted");
+    done.type = "button";
+    done.addEventListener("click", async () => {
+      done.disabled = true;
+      try {
+        Object.assign(post, await markPosted(post));
+        render();
+      } catch (err) {
+        done.disabled = false;
+        done.textContent = `Couldn't save: ${err.message}`;
+      }
+    });
+    actions.prepend(done);
+  }
   foot.append(count, actions);
-  article.append(foot, renderComments(post));
+  body.append(foot, renderComments(post));
   return article;
 }
 
@@ -915,7 +893,103 @@ window.addEventListener("hashchange", () => {
 // Editing (editor only)
 
 function preview(post) {
+  if (post.platform === "discord") return previewDiscord(post);
   return post.platform === "x" ? previewX(post) : previewLinkedIn(post);
+}
+
+// A Discord message as the server shows it: channel bar, avatar, name and time, then the text with
+// Discord's markdown (# headings, **bold**, *italic*, __underline__, > quotes, - lists, -# small
+// text, `code`, links) and the server's custom :emoji:.
+function previewDiscord(post) {
+  const acc = ACCOUNTS.discord;
+  const pv = el("div", "preview pv-dc");
+  const channel = el("div", "pv-dc-channel");
+  channel.append(el("span", "pv-dc-hash", "#"), acc.handle);
+  const msg = el("div", "pv-dc-msg");
+  const avatar = el("img", "pv-dc-avatar");
+  avatar.src = "assets/mark.svg";
+  avatar.alt = "";
+  const main = el("div", "pv-dc-main");
+  const head = el("div", "pv-dc-head");
+  head.append(el("span", "pv-dc-name", acc.name), el("span", "pv-dc-time", `${shortDayFmt.format(new Date(post.scheduledAt))}, ${timeFmt.format(new Date(post.scheduledAt))}`));
+  main.append(head, discordBody(fullText(post)));
+  const m = media(post);
+  if (m) main.append(m);
+  msg.append(avatar, main);
+  pv.append(channel, msg);
+  return pv;
+}
+
+function discordBody(text) {
+  const body = el("div", "pv-dc-body");
+  let list = null;
+  for (const line of text.split("\n")) {
+    let m;
+    if ((m = /^(#{1,3}) (.*)$/.exec(line))) {
+      list = null;
+      const h = el("div", `pv-dc-h${m[1].length}`);
+      h.append(discordInline(m[2]));
+      body.append(h);
+    } else if ((m = /^-# (.*)$/.exec(line))) {
+      list = null;
+      const sub = el("div", "pv-dc-sub");
+      sub.append(discordInline(m[1]));
+      body.append(sub);
+    } else if ((m = /^>>? ?(.*)$/.exec(line))) {
+      list = null;
+      const q = el("div", "pv-dc-quote");
+      q.append(discordInline(m[1]));
+      body.append(q);
+    } else if ((m = /^\s*[-*] (.*)$/.exec(line))) {
+      if (!list) { list = el("ul", "pv-dc-list"); body.append(list); }
+      const li = el("li");
+      li.append(discordInline(m[1]));
+      list.append(li);
+    } else {
+      list = null;
+      const p = el("div", line.trim() ? "pv-dc-line" : "pv-dc-line blank");
+      if (line.trim()) p.append(discordInline(line));
+      body.append(p);
+    }
+  }
+  return body;
+}
+
+function discordInline(text) {
+  const out = document.createDocumentFragment();
+  const re = /\*\*(.+?)\*\*|__(.+?)__|\*([^*\s][^*]*?)\*|`([^`]+)`|:([A-Za-z0-9_]+):|(@everyone|@here)|<(https?:\/\/[^>\s]+)>|(https?:\/\/[^\s<]+[^\s<.,:;"')\]])/g;
+  let last = 0;
+  let m;
+  while ((m = re.exec(text))) {
+    if (m.index > last) out.append(text.slice(last, m.index));
+    if (m[1] != null) { const b = el("strong"); b.append(discordInline(m[1])); out.append(b); }
+    else if (m[2] != null) { const u = el("u"); u.append(discordInline(m[2])); out.append(u); }
+    else if (m[3] != null) { const i = el("em"); i.append(discordInline(m[3])); out.append(i); }
+    else if (m[4] != null) out.append(el("code", "pv-dc-code", m[4]));
+    else if (m[5] != null) {
+      const src = DISCORD_EMOJI[m[5].toLowerCase()];
+      if (src) {
+        const img = el("img", "pv-dc-emoji");
+        img.src = src;
+        img.alt = `:${m[5]}:`;
+        img.title = `:${m[5]}:`;
+        out.append(img);
+      } else {
+        out.append(m[0]);
+      }
+    } else if (m[6] != null) out.append(el("span", "pv-dc-mention", m[6]));
+    else {
+      const href = m[7] ?? m[8];
+      const a = el("a", "pv-dc-link", href);
+      a.href = href;
+      a.target = "_blank";
+      a.rel = "noopener";
+      out.append(a);
+    }
+    last = re.lastIndex;
+  }
+  if (last < text.length) out.append(text.slice(last));
+  return out;
 }
 
 function upsertPost(saved) {

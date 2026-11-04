@@ -110,6 +110,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* Each platform in its own colours: X's logo in black or white, LinkedIn's white "in" on its blue. */
 .pf-x { color: var(--ink); }
 .pf-linkedin { color: #0a66c2; }
+.pf-discord { color: #5865f2; }
 
 /* Controls: pills. White means "the thing to press"; everything else is a quiet grey. */
 
@@ -285,7 +286,6 @@ textarea.field { padding: 10px 14px; resize: vertical; }
 .line.s-draft { background: var(--draft-tint); }
 .line.s-published { background: var(--posted-tint); color: var(--ink-2); }
 .line.s-draft .line-text { color: var(--ink-2); }
-.echo-badge { flex: none; font-size: 10px; line-height: 14px; padding: 0 5px; border-radius: 999px; color: var(--decide); box-shadow: inset 0 0 0 1px var(--decide); }
 [data-view="week"] .line { padding: 8px; margin: 0 -8px; }
 .more { padding-left: 15px; font-size: 12px; color: var(--ink-3); }
 
@@ -341,32 +341,43 @@ html:has(.day[open]) { overflow: hidden; }
 .empty { margin: 0; color: var(--ink-2); }
 
 .posts {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 40px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 680px;
+  margin: 0 auto;
 }
 
-.post { min-width: 0; }
+.post { min-width: 0; border-radius: 16px; background: var(--surface); }
 
 .post-meta {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 16px;
+  background: none;
+  font: inherit;
   font-size: 13px;
+  text-align: left;
   color: var(--ink-2);
+  cursor: pointer;
 }
+.post-meta:hover { background: var(--raised); }
+.post-meta time { flex: none; }
+.post-snippet { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink); font-size: 14px; }
+.post-chevron { flex: none; display: inline-flex; color: var(--ink-3); transition: transform 0.15s; }
+.post-meta[aria-expanded="true"] .post-chevron { transform: rotate(180deg); }
+.post-body { padding: 4px 16px 16px; }
+.post-body[hidden] { display: none; }
 .post-platform { display: inline-flex; align-items: center; }
 .post-platform .pf { width: 16px; height: 16px; }
-.status { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; }
+.status { flex: none; display: inline-flex; align-items: center; gap: 7px; }
 .status.s-suggested { color: var(--decide); }
 .status.s-draft { color: var(--draft); }
 .status.s-published { color: var(--posted); }
-.echo-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -6px 0 14px; padding: 8px 12px; border-radius: 12px; font-size: 13px; color: var(--decide); background: var(--decide-tint); }
-.echo-row.done { color: var(--posted); background: var(--posted-tint); }
-.echo-banner { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin: 0 0 16px; padding: 12px 16px; border-radius: 14px; font-size: 13px; color: var(--decide); background: var(--decide-tint); }
-.echo-banner strong { font-weight: 500; }
-.echo-banner .link { color: var(--ink-2); }
 
 /* Previews sit straight on the sheet: the post's own layout, nothing boxed around it. */
 .pv-author { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
@@ -672,3 +683,31 @@ kbd {
 #theme-toggle .i-moon { display: none; }
 :root[data-theme="light"] #theme-toggle .i-sun { display: none; }
 :root[data-theme="light"] #theme-toggle .i-moon { display: block; }
+
+/* Discord message preview: Discord's own dark theme, whatever the calendar's theme. */
+.pv-dc { overflow: hidden; border-radius: 12px; background: #313338; color: #dbdee1; font-family: "gg sans", "Noto Sans", "Helvetica Neue", Arial, sans-serif; }
+.pv-dc-channel { display: flex; align-items: center; gap: 6px; padding: 10px 16px; border-bottom: 1px solid #26272b; font-size: 15px; font-weight: 600; color: #f2f3f5; }
+.pv-dc-hash { color: #80848e; font-size: 20px; font-weight: 400; line-height: 1; }
+.pv-dc-msg { display: flex; gap: 16px; padding: 14px 16px 18px; }
+.pv-dc-avatar { flex: none; width: 40px; height: 40px; border-radius: 50%; }
+.pv-dc-main { flex: 1; min-width: 0; }
+.pv-dc-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.pv-dc-name { font-size: 16px; font-weight: 500; color: #f2f3f5; }
+.pv-dc-time { font-size: 12px; color: #949ba4; }
+.pv-dc-body { font-size: 16px; line-height: 1.375; overflow-wrap: anywhere; }
+.pv-dc-body strong { font-weight: 700; color: inherit; }
+.pv-dc-h1, .pv-dc-h2, .pv-dc-h3 { margin: 8px 0 4px; font-weight: 700; line-height: 1.375; color: #f2f3f5; }
+.pv-dc-body > :first-child { margin-top: 0; }
+.pv-dc-h1 { font-size: 24px; }
+.pv-dc-h2 { font-size: 20px; }
+.pv-dc-h3 { font-size: 16px; }
+.pv-dc-sub { font-size: 13px; color: #949ba4; }
+.pv-dc-line.blank { min-height: 1.375em; }
+.pv-dc-quote { padding-left: 12px; border-left: 4px solid #4e5058; }
+.pv-dc-list { margin: 2px 0; padding-left: 22px; }
+.pv-dc-emoji { width: 1.375em; height: 1.375em; vertical-align: -0.3em; object-fit: contain; }
+.pv-dc-mention { padding: 0 2px; border-radius: 3px; background: rgba(88, 101, 242, 0.3); color: #c9cdfb; font-weight: 500; }
+.pv-dc-link { color: #00a8fc; text-decoration: none; }
+.pv-dc-link:hover { text-decoration: underline; }
+.pv-dc-code { padding: 0 0.2em; border-radius: 4px; background: #2b2d31; font-size: 85%; }
+.pv-dc .pv-media { max-width: 420px; margin-top: 8px; border-radius: 8px; }
