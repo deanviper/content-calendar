@@ -14,6 +14,14 @@ const STATUSES = {
   draft: "Draft",
   published: "Posted",
 };
+// Every X post is news for the community, so it gets echoed in Discord too. A post counts as
+// echoed once it has a comment starting with ECHO_MARK (the button on the post adds one), which
+// also leaves a visible note of who did it and when. Only posts from 4 Nov 2026 on are tracked.
+const ECHO_MARK = "✓ Echoed to Discord";
+const ECHO_FROM = "2026-11-04";
+const echoed = (post) => post.comments.some((c) => c.body.startsWith(ECHO_MARK));
+const needsEcho = (post) => post.platform === "x" && post.scheduledAt >= ECHO_FROM && !echoed(post);
+
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MAX_LINES = 3;
 
@@ -29,6 +37,7 @@ const els = {
   day: $("day"),
   player: $("player"),
   newPost: $("new-post"),
+  echo: $("echo"),
   account: $("account"),
 };
 
@@ -232,7 +241,26 @@ function renderGrid(keys) {
     rows.push(row);
   }
   els.weeks.replaceChildren(...rows);
+  renderEcho();
   renderDay();
+}
+
+// Reminder strip: posts that went out on X but haven't been shared in Discord yet.
+function renderEcho() {
+  const due = state.posts.filter((p) => p.status === "published" && needsEcho(p))
+    .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
+  els.echo.hidden = !due.length;
+  if (!due.length) return;
+  const items = due.map((p) => {
+    const b = el("button", "link", `${shortDayFmt.format(new Date(p.scheduledAt))}: ${p.copy.split("\n")[0].replace(/^# /, "").slice(0, 60)}`);
+    b.type = "button";
+    b.addEventListener("click", () => select(dayKeyFmt.format(new Date(p.scheduledAt)), { post: p.id, open: true }));
+    return b;
+  });
+  els.echo.replaceChildren(
+    el("strong", null, `Echo in Discord: ${plural(due.length, "post")} on X not shared there yet`),
+    ...items,
+  );
 }
 
 // The open day shows in a pop-up over the calendar. It re-renders with the grid and keeps its
@@ -297,6 +325,11 @@ function renderLine(post) {
   const line = el("span", `line s-${post.status}`);
   line.dataset.post = post.id;
   line.append(mark(post.status), el("span", "line-time", timeFmt.format(new Date(post.scheduledAt))), icon(post.platform));
+  if (post.status === "published" && needsEcho(post)) {
+    const badge = el("span", "echo-badge", "Discord");
+    badge.title = "Not echoed in Discord yet";
+    line.append(badge);
+  }
   if (state.view === "week") {
     line.append(el("span", "line-text", post.copy.split("\n")[0]));
     if (post.status === "draft") line.append(el("span", "line-status", STATUSES.draft));
@@ -356,6 +389,34 @@ function renderSheet(k) {
   return sheet;
 }
 
+function echoRow(post) {
+  const row = el("div", "echo-row");
+  const done = post.comments.find((c) => c.body.startsWith(ECHO_MARK));
+  if (done) {
+    row.classList.add("done");
+    row.append(el("span", null, `Echoed in Discord by ${done.authorName}, ${commentTimeFmt.format(new Date(done.createdAt))}`));
+    return row;
+  }
+  row.append(el("span", null, post.status === "published" ? "Not echoed in Discord yet" : "After it goes out, echo it in Discord"));
+  if (state.user) {
+    const btn = el("button", "pill", "Mark echoed");
+    btn.type = "button";
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        const who = state.user.name ? state.user.name.split(/\s+/)[0] : state.user.email.split("@")[0];
+        post.comments.push(await addComment(post.id, who, ECHO_MARK));
+        render();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = `Couldn't save: ${err.message}`;
+      }
+    });
+    row.append(btn);
+  }
+  return row;
+}
+
 function renderPost(post) {
   const platform = PLATFORMS[post.platform];
   const article = el("article", `post s-${post.status}`);
@@ -372,7 +433,9 @@ function renderPost(post) {
   const status = el("span", `status s-${post.status}`);
   status.append(mark(post.status), STATUSES[post.status] ?? post.status);
   meta.append(name, time, status);
-  article.append(meta, post.platform === "x" ? previewX(post) : previewLinkedIn(post));
+  article.append(meta);
+  if (post.platform === "x" && post.scheduledAt >= ECHO_FROM) article.append(echoRow(post));
+  article.append(post.platform === "x" ? previewX(post) : previewLinkedIn(post));
 
   const length = fullText(post).length;
   const thread = post.platform === "x" ? post.thread ?? [] : [];
