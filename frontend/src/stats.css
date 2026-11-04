@@ -40,7 +40,7 @@
 
 .kpis {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   background: var(--surface);
   border-radius: var(--radius);
 }
@@ -186,7 +186,6 @@ select.field { padding-right: 32px; }
   .kpi { border-left: 0; border-top: 1px solid var(--line); padding: 14px 16px; }
   .kpi:nth-child(-n + 2) { border-top: 0; }
   .kpi:nth-child(even) { border-left: 1px solid var(--line); }
-  .kpi:last-child { grid-column: 1 / -1; border-left: 0; }
   .kpi-value { font-size: 24px; }
   .panel { padding: 16px; }
   .marker-form { grid-template-columns: 1fr; }

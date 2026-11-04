@@ -47,40 +47,12 @@ function platforms() {
 
 // Days in the selected range, and the same number of days just before it.
 function window_() {
-  const first = state.data.daily[0]?.day ?? todayKey;
+  const first = firstPostDay();
   const days = state.range === "all"
     ? Math.max(1, Math.round((new Date(todayKey) - new Date(first)) / DAY) + 1)
     : state.range;
   const start = addDays(todayKey, -(days - 1));
   return { start, end: todayKey, days, prevStart: addDays(start, -days), prevEnd: addDays(start, -1) };
-}
-
-// Daily running totals turned into what each day added. The first day of data is the starting point,
-// not a gain, so it counts as zero.
-function gains() {
-  const out = new Map();
-  for (const pf of ["x", "linkedin"]) {
-    const rows = state.data.daily.filter((d) => d.platform === pf);
-    let prev = null;
-    for (const r of rows) {
-      const g = prev ? { impressions: Math.max(0, r.impressions - prev.impressions), engagements: Math.max(0, r.engagements - prev.engagements) } : { impressions: 0, engagements: 0 };
-      out.set(`${pf}:${r.day}`, g);
-      prev = r;
-    }
-  }
-  return out;
-}
-
-function sumGains(g, from, to) {
-  let impressions = 0;
-  let engagements = 0;
-  for (let k = from; k <= to; k = addDays(k, 1)) {
-    for (const pf of platforms()) {
-      const v = g.get(`${pf}:${k}`);
-      if (v) { impressions += v.impressions; engagements += v.engagements; }
-    }
-  }
-  return { impressions, engagements, rate: impressions ? engagements / impressions : null };
 }
 
 function followersOn(day, pf) {
@@ -107,17 +79,39 @@ function postsBetween(from, to) {
   return state.data.posts.filter((p) => platforms().includes(p.platform) && manilaDay(p.publishedAt) >= from && manilaDay(p.publishedAt) <= to);
 }
 
+// Numbers from the posts themselves: each post's latest totals, counted on the day it went out.
+// These exist for every post the collector has seen, so ranges before tracking began still compare.
+function postSums(from, to) {
+  const posts = postsBetween(from, to);
+  const seen = posts.filter((p) => p.impressions > 0);         // LinkedIn hides impressions from non-admins
+  const impressions = seen.reduce((s, p) => s + p.impressions, 0);
+  const seenEng = seen.reduce((s, p) => s + p.engagements, 0);
+  const engagements = posts.reduce((s, p) => s + p.engagements, 0);
+  return {
+    posts: posts.length,
+    impressions,
+    engagements,
+    rate: impressions ? seenEng / impressions : null,
+    perPost: seen.length ? impressions / seen.length : null,
+    engPerPost: posts.length ? engagements / posts.length : null,
+  };
+}
+
+function firstPostDay() {
+  const days = state.data.posts.map((p) => manilaDay(p.publishedAt)).sort();
+  return days[0] ?? todayKey;
+}
+
 // Rendering
 
 function render() {
   const w = window_();
-  const g = gains();
   $("sub").textContent = `${dayFmt.format(new Date(w.start))} – ${dayFmt.format(new Date(w.end))} · compared with the ${w.days} days before · UTC${state.data.live ? "" : " · sample data"}`;
-  renderKpis(w, g);
-  renderImpressions(w, g);
+  renderKpis(w);
+  renderImpressions(w);
   renderFollowers(w);
   renderMarkerSelect();
-  renderMarkerCompare(g);
+  renderMarkerCompare();
   renderPosts(w);
   renderMarkers();
 }
@@ -135,23 +129,22 @@ function delta(now, before, { points = false } = {}) {
   return { text: `${d > 0 ? "▲" : "▼"} ${pct.format(Math.abs(d))}`, tone: d > 0 ? "good" : "bad" };
 }
 
-function renderKpis(w, g) {
-  const now = sumGains(g, w.start, w.end);
-  const before = w.prevStart >= (state.data.daily[0]?.day ?? w.prevStart) ? sumGains(g, w.prevStart, w.prevEnd) : null;
+function renderKpis(w) {
+  const now = postSums(w.start, w.end);
+  const before = w.prevStart >= firstPostDay() ? postSums(w.prevStart, w.prevEnd) : null;
   const fNow = followerTotal(w.end);
   const fStart = followerTotal(addDays(w.start, -1));
   const fPrevStart = followerTotal(addDays(w.prevStart, -1));
   const gained = fNow != null && fStart != null ? fNow - fStart : null;
   const gainedBefore = fStart != null && fPrevStart != null ? fStart - fPrevStart : null;
-  const postsNow = postsBetween(w.start, w.end).length;
-  const postsBefore = before ? postsBetween(w.prevStart, w.prevEnd).length : null;
 
   const items = [
     { label: "Impressions", value: compact.format(now.impressions), d: delta(now.impressions, before?.impressions) },
+    { label: "Impressions per post", value: now.perPost == null ? "–" : compact.format(now.perPost), d: delta(now.perPost, before?.perPost) },
     { label: "Engagements", value: compact.format(now.engagements), d: delta(now.engagements, before?.engagements) },
     { label: "Engagement rate", value: now.rate == null ? "–" : pct.format(now.rate), d: delta(now.rate, before?.rate, { points: true }) },
-    { label: "Followers", value: fNow == null ? "–" : compact.format(fNow), d: gained == null ? { text: "–", tone: "flat" } : { text: `${gained >= 0 ? "+" : ""}${whole.format(gained)} in range${gainedBefore != null ? `, ${gainedBefore >= 0 ? "+" : ""}${whole.format(gainedBefore)} before` : ""}`, tone: gainedBefore == null || gained === gainedBefore ? "flat" : gained > gainedBefore ? "good" : "bad" } },
-    { label: "Posts published", value: whole.format(postsNow), d: postsBefore == null ? { text: "no earlier data to compare", tone: "flat" } : { text: `${whole.format(postsBefore)} the ${w.days} days before`, tone: "flat" } },
+    { label: "Followers", value: fNow == null ? "–" : compact.format(fNow), d: gained == null ? { text: "daily history starts today", tone: "flat" } : { text: `${gained >= 0 ? "+" : ""}${whole.format(gained)} in range${gainedBefore != null ? `, ${gainedBefore >= 0 ? "+" : ""}${whole.format(gainedBefore)} before` : ""}`, tone: gainedBefore == null || gained === gainedBefore ? "flat" : gained > gainedBefore ? "good" : "bad" } },
+    { label: "Posts published", value: whole.format(now.posts), d: before == null ? { text: "no earlier data to compare", tone: "flat" } : { text: `${whole.format(before.posts)} the ${w.days} days before`, tone: "flat" } },
   ];
   $("kpis").replaceChildren(...items.map((k) => {
     const cell = el("div", "kpi");
@@ -160,14 +153,20 @@ function renderKpis(w, g) {
   }));
 }
 
-function renderImpressions(w, g) {
+function renderImpressions(w) {
   const days = [];
   for (let k = w.start; k <= w.end; k = addDays(k, 1)) days.push(k);
-  const series = platforms().map((pf) => ({
+  const byDay = new Map();
+  for (const p of postsBetween(w.start, w.end)) {
+    const k = `${p.platform}:${manilaDay(p.publishedAt)}`;
+    byDay.set(k, (byDay.get(k) ?? 0) + p.impressions);
+  }
+  // LinkedIn impressions are admin-only, so it only gets a line once it has some.
+  const series = platforms().filter((pf) => pf === "x" || [...byDay].some(([k, v]) => k.startsWith(pf) && v > 0)).map((pf) => ({
     key: pf,
     label: PLATFORMS[pf].name,
     color: PLATFORMS[pf].color,
-    values: days.map((k) => g.get(`${pf}:${k}`)?.impressions ?? null),
+    values: days.map((k) => byDay.get(`${pf}:${k}`) ?? 0),
   }));
   lineChart($("imp-chart"), { days, series, markers: visibleMarkers(w), height: 260 });
   legend($("imp-legend"), series);
@@ -245,7 +244,7 @@ function renderMarkerSelect() {
   select.hidden = !markers.length;
 }
 
-function renderMarkerCompare(g) {
+function renderMarkerCompare() {
   const box = $("marker-compare");
   const m = state.data.markers.find((x) => x.id === state.marker);
   if (!m) {
@@ -253,62 +252,46 @@ function renderMarkerCompare(g) {
     return;
   }
   const day = manilaDay(m.markedAt);
-  const after = Math.round((new Date(todayKey) - new Date(day)) / DAY);
-  if (after < 1) {
-    box.replaceChildren(el("p", "empty", `${m.label} is today. Check back tomorrow for the first comparison.`));
-    return;
-  }
-  // Equal windows on each side, up to 30 days, so the two sides are fair to compare.
-  const n = Math.min(after, 30);
-  const beforeFrom = addDays(day, -n);
-  const beforeTo = addDays(day, -1);
-  const afterFrom = day;
-  const afterTo = addDays(day, n - 1);
-  const firstDay = state.data.daily[0]?.day;
-  if (!firstDay || beforeTo < firstDay) {
+  const after = Math.round((new Date(todayKey) - new Date(day)) / DAY) + 1;
+  // Up to 30 days before the marker, everything since. Rows are per post or per week, so the two
+  // sides don't need the same length.
+  const nBefore = Math.min(30, Math.round((new Date(day) - new Date(firstPostDay())) / DAY));
+  if (nBefore < 1) {
     box.replaceChildren(el("p", "empty", `${m.label} is where tracking starts, so there is nothing before it yet. It's the baseline the other markers are measured against.`));
     return;
   }
-
-  const side = (from, to) => {
-    const sums = sumGains(g, from, to);
-    const posts = postsBetween(from, to);
+  const side = (from, to, n) => {
+    const s = postSums(from, to);
     const f0 = followerTotal(addDays(from, -1));
     const f1 = followerTotal(to);
-    return {
-      perDay: sums.impressions / n,
-      rate: sums.rate,
-      perPost: posts.length ? posts.reduce((s, p) => s + p.impressions, 0) / posts.length : null,
-      followers: f0 != null && f1 != null ? (f1 - f0) / n : null,
-      posts: posts.length,
-    };
+    return { ...s, perWeek: (s.posts / n) * 7, followers: f0 != null && f1 != null ? (f1 - f0) / n : null };
   };
-  const b = side(beforeFrom, beforeTo);
-  const a = side(afterFrom, afterTo);
+  const b = side(addDays(day, -nBefore), addDays(day, -1), nBefore);
+  const a = side(day, todayKey, after);
   const rows = [
-    ["Impressions per day", (v) => compact.format(v), b.perDay, a.perDay],
+    ["Impressions per post", (v) => whole.format(Math.round(v)), b.perPost, a.perPost],
+    ["Engagements per post", (v) => whole.format(Math.round(v)), b.engPerPost, a.engPerPost],
     ["Engagement rate", (v) => pct.format(v), b.rate, a.rate, true],
-    ["Impressions per post", (v) => compact.format(v), b.perPost, a.perPost],
+    ["Posts per week", (v) => v.toFixed(1), b.perWeek, a.perWeek],
     ["Followers gained per day", (v) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}`, b.followers, a.followers],
-    ["Posts", (v) => whole.format(v), b.posts, a.posts],
   ];
 
   const table = el("table", "compare");
   const head = el("tr");
-  head.append(el("th"), el("th", "num", `${n} days before`), el("th", "num", `${n} days after`), el("th", "num", "Change"));
+  head.append(el("th"), el("th", "num", `${nBefore} days before`), el("th", "num", `Since (${after} days)`), el("th", "num", "Change"));
   table.append(head);
   for (const [label, fmt, before, afterV, points] of rows) {
     const tr = el("tr");
-    const d = label === "Posts" ? { text: "", tone: "flat" } : delta(afterV, before, { points });
+    const d = delta(afterV, before, { points });
     tr.append(
       el("th", null, label),
       el("td", "num", before == null ? "–" : fmt(before)),
       el("td", "num", afterV == null ? "–" : fmt(afterV)),
-      el("td", `num kpi-delta ${d.tone}`, d.text),
+      el("td", `num kpi-delta ${d.tone}`, before == null || afterV == null ? "" : d.text),
     );
     table.append(tr);
   }
-  const note = el("p", "panel-note", `${m.label}, ${dateTimeFmt.format(new Date(m.markedAt))}${m.note ? `: ${m.note}` : ""}`);
+  const note = el("p", "panel-note", `${m.label}, ${dateTimeFmt.format(new Date(m.markedAt))}${m.note ? `: ${m.note}` : ""}. Each post's totals as of the latest capture; older posts have had longer to collect, so this leans toward the before side.`);
   box.replaceChildren(note, table);
 }
 
@@ -450,7 +433,7 @@ $("marker-form").addEventListener("submit", async (e) => {
 
 $("marker-select").addEventListener("change", (e) => {
   state.marker = e.target.value;
-  renderMarkerCompare(gains());
+  renderMarkerCompare();
 });
 
 // A small SVG line chart: one shared x axis of days, a recessive grid, markers as dashed rules,
