@@ -234,9 +234,44 @@ export function xPublicClient(username: string, fetchFn: Fetch = fetch) {
     return null;
   }
 
+  // X's embedded-timeline page: the latest ~20 posts (with replies and the pinned post) and the follower count.
+  let embedded: Promise<any[]> | undefined;
+  const embeddedTimeline = () => (embedded ??= (async () => {
+    const res = await fetchFn(`https://syndication.twitter.com/srv/timeline-profile/screen-name/${user}`, { headers: LI_HEADERS });
+    if (!res.ok) throw new Error(`${res.status} from X's embedded timeline`);
+    const json = (await res.text()).match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/)?.[1];
+    if (!json) throw new Error("X's embedded timeline had no data");
+    return (JSON.parse(json).props?.pageProps?.timeline?.entries ?? []).map((e: any) => e.content?.tweet).filter(Boolean);
+  })());
+
   return {
-    followers: () => fx.followers(),
-    timeline: (since?: string) => fx.timeline(since),
+    async followers() {
+      try { return await fx.followers(); } catch {
+        const n = (await embeddedTimeline()).find((t) => t.user?.screen_name?.toLowerCase() === username.toLowerCase())?.user?.followers_count;
+        if (typeof n !== "number") throw new Error("no follower count from FxTwitter or X's embedded timeline");
+        return { followers: n, raw: { source: "syndication", followers: n } };
+      }
+    },
+    async timeline(since?: string): Promise<FoundPost[]> {
+      try {
+        const found = await fx.timeline(since);
+        if (found.length) return found;
+      } catch { /* fall back below */ }
+      return (await embeddedTimeline())
+        .filter((t) => !t.in_reply_to_status_id_str && !t.retweeted_status && t.user?.screen_name?.toLowerCase() === username.toLowerCase())
+        .map((t) => ({
+          externalId: String(t.id_str),
+          url: `https://x.com/${username}/status/${t.id_str}`,
+          copy: t.full_text ?? t.text ?? "",
+          publishedAt: new Date(t.created_at).toISOString(),
+          metrics: {
+            externalId: String(t.id_str), impressions: null, likes: t.favorite_count ?? null, reposts: t.retweet_count ?? null,
+            replies: t.reply_count ?? null, quotes: t.quote_count ?? null, bookmarks: null, clicks: null,
+            raw: { source: "syndication-timeline" },
+          },
+        }))
+        .filter((p) => !since || p.publishedAt >= since);
+    },
     async metrics(ids: string[]): Promise<PostMetrics[]> {
       const out: PostMetrics[] = [];
       for (const batch of chunks(ids, 5)) out.push(...(await Promise.all(batch.map(one))).filter((m): m is PostMetrics => m !== null));
