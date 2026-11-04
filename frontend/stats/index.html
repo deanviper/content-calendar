@@ -39,6 +39,8 @@
       </div>
       <div class="sync">
         <span class="sync-note" id="sync-note" aria-live="polite"></span>
+        <label class="pill" for="import-csv" title="X Analytics > Overview > Export data">Import X CSV</label>
+        <input type="file" id="import-csv" accept=".csv,text/csv" hidden>
         <button type="button" class="pill" id="resync">Resync now</button>
       </div>
     </div>
@@ -79,6 +81,7 @@
         <h2 id="imp-title">Impressions by day posted</h2>
         <ul class="legend" id="imp-legend"></ul>
       </div>
+      <p class="panel-note" id="imp-note"></p>
       <div class="chart" id="imp-chart"></div>
       <details class="table-view">
         <summary>Show daily numbers</summary>

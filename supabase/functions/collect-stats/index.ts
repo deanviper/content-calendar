@@ -262,6 +262,29 @@ Deno.serve(async (req) => {
     auth: { persistSession: false },
   });
 
+  // Account history from a platform's own export (X's account overview CSV), parsed on the stats
+  // page: one row per day with the follower count and that day's account totals. Editors only.
+  if (url.searchParams.get("mode") === "import") {
+    if (!(await allowed(req))) {
+      return Response.json({ error: "imports need an editor's session" }, { status: 401, headers: CORS });
+    }
+    const body = await req.json().catch(() => null);
+    const platform = body?.platform;
+    const rows = Array.isArray(body?.rows) ? body.rows : null;
+    const valid = (platform === "x" || platform === "linkedin") && rows && rows.length <= 1000 && rows.every((r: any) =>
+      !Number.isNaN(Date.parse(r?.captured_at)) && Number.isInteger(r?.followers) && r.followers >= 0 &&
+      r?.raw && typeof r.raw === "object");
+    if (!valid) {
+      return Response.json({ error: "send { platform, rows: [{ captured_at, followers, raw }] }" }, { status: 400, headers: CORS });
+    }
+    const { error } = await db.from("account_metric_snapshots").upsert(
+      rows.map((r: any) => ({ platform, captured_at: r.captured_at, followers: r.followers, raw: r.raw, source: "import" })),
+      { onConflict: "platform,captured_at" },
+    );
+    if (error) return Response.json({ error: error.message }, { status: 500, headers: CORS });
+    return Response.json({ mode: "import", platform, imported: rows.length }, { headers: CORS });
+  }
+
   if (!(await allowed(req))) {
     if (backfill || since) {
       return Response.json({ error: "backfills need an editor's session" }, { status: 401, headers: CORS });

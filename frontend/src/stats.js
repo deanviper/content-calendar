@@ -1,4 +1,4 @@
-import { loadStats, addMarker, resync, syncIfStale } from "./stats-data.js";
+import { loadStats, addMarker, resync, syncIfStale, importXOverview } from "./stats-data.js";
 import { utcDate } from "./data.js";
 import { initThemeToggle } from "./theme.js";
 
@@ -65,16 +65,6 @@ function followersOn(day, pf) {
   return last;
 }
 
-function followerTotal(day) {
-  let total = 0;
-  for (const pf of platforms()) {
-    const v = followersOn(day, pf);
-    if (v == null) return null;
-    total += v;
-  }
-  return total;
-}
-
 // Paid posts stay in the posts table, tagged, but are left out of every total, average and chart:
 // a promoted reach number says nothing about how the organic content is doing. Keyed by post URL id.
 const PROMOTED = {
@@ -113,6 +103,32 @@ function postSums(from, to) {
     // view-less posts don't drag the average in the "All" view.
     engPerPost: seen.length ? seenEng / seen.length : null,
     likeRate: impressions ? seenLikes / impressions : null,
+  };
+}
+
+// X's own daily account totals, from its analytics export. Organic only: promoted reach isn't in
+// them. Today is still in progress, so ranges stop at yesterday.
+const yesterday = () => addDays(todayKey, -1);
+
+function acctSums(from, to) {
+  if (state.platform === "linkedin") return null;
+  const end = to < yesterday() ? to : yesterday();
+  const rows = (state.data.account ?? []).filter((a) => a.platform === "x" && a.day >= from && a.day <= end);
+  const want = Math.round((new Date(end) - new Date(from)) / DAY) + 1;
+  if (!rows.length || rows.length < want) return null;              // only whole ranges compare fairly
+  const sum = (k) => rows.reduce((n, r) => n + (r[k] ?? 0), 0);
+  const days = rows.length;
+  const impressions = sum("impressions");
+  return {
+    days,
+    impressions,
+    perDay: impressions / days,
+    engPerDay: sum("engagements") / days,
+    rate: impressions ? sum("engagements") / impressions : null,
+    likeRate: impressions ? sum("likes") / impressions : null,
+    visitsPerDay: sum("profile_visits") / days,
+    followsPerDay: sum("new_follows") / days,
+    unfollowsPerDay: sum("unfollows") / days,
   };
 }
 
@@ -158,12 +174,22 @@ function renderKpis(w) {
   const now = postSums(w.start, w.end);
   const before = w.prevStart >= firstPostDay() ? postSums(w.prevStart, w.prevEnd) : null;
 
+  const acNow = acctSums(w.start, w.end);
+  const acBefore = acctSums(w.prevStart, w.prevEnd);
+  if (acNow && acBefore && before) {
+    // Whole-account numbers from X analytics: they include clicks and views of older posts, which
+    // the per-post capture can't see.
+    Object.assign(now, { impressions: acNow.impressions, rate: acNow.rate, likeRate: acNow.likeRate });
+    Object.assign(before, { impressions: acBefore.impressions, rate: acBefore.rate, likeRate: acBefore.likeRate, outliers: [] });
+    now.outliers = [];
+  }
+  const src = acNow && acBefore && before ? " · X analytics" : "";
   const items = [
-    { label: "Impressions", value: compact.format(now.impressions), d: withOutliers(delta(now.impressions, before?.impressions), now, before) },
+    { label: `Impressions${src}`, value: compact.format(now.impressions), d: withOutliers(delta(now.impressions, before?.impressions), now, before) },
     { label: "Typical post (median)", value: now.median == null ? "–" : compact.format(now.median), d: delta(now.median, before?.median) },
     { label: "Engagements per post", value: now.engPerPost == null ? "–" : whole.format(Math.round(now.engPerPost)), d: delta(now.engPerPost, before?.engPerPost) },
-    { label: "Engagement rate", value: now.rate == null ? "–" : pct.format(now.rate), d: delta(now.rate, before?.rate, { points: true }) },
-    { label: "Like rate", value: now.likeRate == null ? "–" : pct.format(now.likeRate), d: now.likeRate == null ? { text: "–", tone: "flat" } : { text: `floor 1.3% · ${delta(now.likeRate, before?.likeRate, { points: true }).text}`, tone: now.likeRate >= 0.013 ? "good" : "bad" } },
+    { label: `Engagement rate${src}`, value: now.rate == null ? "–" : pct.format(now.rate), d: delta(now.rate, before?.rate, { points: true }) },
+    { label: `Like rate${src}`, value: now.likeRate == null ? "–" : pct.format(now.likeRate), d: now.likeRate == null ? { text: "–", tone: "flat" } : { text: `floor 1.3% · ${delta(now.likeRate, before?.likeRate, { points: true }).text}`, tone: now.likeRate >= 0.013 ? "good" : "bad" } },
     { label: "Posts published", value: whole.format(now.posts), d: before == null ? { text: "no earlier data to compare", tone: "flat" } : { text: `${whole.format(before.posts)} the ${w.days} days before`, tone: "flat" } },
   ];
   $("kpis").replaceChildren(...items.map((k) => {
@@ -181,12 +207,17 @@ function renderImpressions(w) {
     const k = `${p.platform}:${manilaDay(p.publishedAt)}`;
     byDay.set(k, (byDay.get(k) ?? 0) + p.impressions);
   }
+  const acct = new Map((state.data.account ?? []).filter((a) => a.platform === "x").map((a) => [a.day, a.impressions]));
+  const useAcct = state.platform !== "linkedin" && days.some((k) => acct.has(k));
+  if (useAcct) for (const k of days) byDay.set(`x:${k}`, acct.get(k) ?? null);
+  $("imp-title").textContent = useAcct ? "Daily impressions" : "Impressions by day posted";
+  $("imp-note").textContent = useAcct ? "X: whole-account impressions from X analytics (organic). Days after the last import are blank." : "Each post's impressions so far, on the day it went out.";
   // LinkedIn impressions are admin-only, so it only gets a line once it has some.
   const series = platforms().filter((pf) => pf === "x" || [...byDay].some(([k, v]) => k.startsWith(pf) && v > 0)).map((pf) => ({
     key: pf,
     label: PLATFORMS[pf].name,
     color: PLATFORMS[pf].color,
-    values: days.map((k) => byDay.get(`${pf}:${k}`) ?? 0),
+    values: days.map((k) => (byDay.has(`${pf}:${k}`) ? byDay.get(`${pf}:${k}`) : useAcct && pf === "x" ? null : 0)),
   }));
   lineChart($("imp-chart"), { days, series, markers: visibleMarkers(w), height: 260 });
   legend($("imp-legend"), series);
@@ -282,13 +313,20 @@ function renderMarkerCompare() {
   }
   const side = (from, to, n) => {
     const s = postSums(from, to);
-    const f0 = followerTotal(addDays(from, -1));
-    const f1 = followerTotal(to);
-    return { ...s, perWeek: (s.posts / n) * 7, followers: f0 != null && f1 != null ? (f1 - f0) / n : null };
+    // Platforms with a follower count at both ends; LinkedIn's history only starts on 4 Nov.
+    let gained = null;
+    for (const pf of platforms()) {
+      const f0 = followersOn(addDays(from, -1), pf);
+      const f1 = followersOn(to, pf);
+      if (f0 != null && f1 != null) gained = (gained ?? 0) + (f1 - f0);
+    }
+    return { ...s, perWeek: (s.posts / n) * 7, followers: gained == null ? null : gained / n, acct: acctSums(from, to) };
   };
   const b = side(addDays(day, -nBefore), addDays(day, -1), nBefore);
   const a = side(day, todayKey, after);
+  const fx = (v) => whole.format(Math.round(v));
   const rows = [
+    ["Per post (our capture)"],
     ["Typical post (median impressions)", (v) => whole.format(Math.round(v)), b.median, a.median],
     ["Average impressions per post", (v) => whole.format(Math.round(v)), b.perPost, a.perPost],
     ["Engagements per post", (v) => whole.format(Math.round(v)), b.engPerPost, a.engPerPost],
@@ -297,14 +335,34 @@ function renderMarkerCompare() {
     ["Posts per week", (v) => v.toFixed(1), b.perWeek, a.perWeek],
     ["Followers gained per day", (v) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}`, b.followers, a.followers],
   ];
+  if (b.acct && a.acct) {
+    rows.push(
+      ["Whole account, per day (X analytics)"],
+      ["Impressions per day", fx, b.acct.perDay, a.acct.perDay],
+      ["Engagements per day", fx, b.acct.engPerDay, a.acct.engPerDay],
+      ["Engagement rate", (v) => pct.format(v), b.acct.rate, a.acct.rate, true],
+      ["Like rate (floor 1.3%)", (v) => pct.format(v), b.acct.likeRate, a.acct.likeRate, true],
+      ["Profile visits per day", fx, b.acct.visitsPerDay, a.acct.visitsPerDay],
+      ["New follows per day", (v) => v.toFixed(1), b.acct.followsPerDay, a.acct.followsPerDay],
+      ["Unfollows per day", (v) => v.toFixed(1), b.acct.unfollowsPerDay, a.acct.unfollowsPerDay, false, true],
+    );
+  }
 
   const table = el("table", "compare");
   const head = el("tr");
   head.append(el("th"), el("th", "num", `${nBefore} days before`), el("th", "num", `Since (${after} days)`), el("th", "num", "Change"));
   table.append(head);
-  for (const [label, fmt, before, afterV, points] of rows) {
+  for (const [label, fmt, before, afterV, points, lowerIsBetter] of rows) {
     const tr = el("tr");
+    if (!fmt) {
+      const th = el("th", "group", label);
+      th.colSpan = 4;
+      tr.append(th);
+      table.append(tr);
+      continue;
+    }
     const d = delta(afterV, before, { points });
+    if (lowerIsBetter && d.tone !== "flat") d.tone = d.tone === "good" ? "bad" : "good";
     tr.append(
       el("th", null, label),
       el("td", "num", before == null ? "–" : fmt(before)),
@@ -649,6 +707,22 @@ $("resync").addEventListener("click", async (e) => {
   } finally {
     btn.disabled = false;
     btn.textContent = "Resync now";
+  }
+});
+
+// X's account overview CSV (Analytics > Overview > Export): daily totals and follower history.
+$("import-csv").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  $("sync-note").textContent = "Importing…";
+  try {
+    const out = await importXOverview(await file.text());
+    state.data = await loadStats();
+    render();
+    $("sync-note").textContent = `Imported ${out.imported} days of X analytics (${dayFmt.format(new Date(out.from))} – ${dayFmt.format(new Date(out.to))})`;
+  } catch (err) {
+    $("sync-note").textContent = `Couldn't import: ${err.message}`;
   }
 });
 

@@ -19,15 +19,17 @@ export async function loadStats() {
   if (!configured) return sampleStats(new Date());
   await signedIn();
   const supabase = await db();
-  const [posts, daily, followers, markers, sync] = await Promise.all([
+  const [posts, daily, followers, markers, sync, account] = await Promise.all([
     supabase.from("post_performance").select("*").order("published_at", { ascending: false }),
     supabase.from("daily_post_metrics").select("*").order("day"),
     supabase.from("daily_followers").select("*").order("day"),
     supabase.from("stat_markers").select("*").order("marked_at"),
     // Every run records follower counts, so the newest one is when stats were last pulled.
-    supabase.from("account_metric_snapshots").select("captured_at").order("captured_at", { ascending: false }).limit(1),
+    supabase.from("account_metric_snapshots").select("captured_at").eq("source", "api").order("captured_at", { ascending: false }).limit(1),
+    // Daily account totals imported from the platform's own analytics export.
+    supabase.from("account_metric_snapshots").select("platform, captured_at, raw").eq("source", "import").order("captured_at"),
   ]);
-  for (const r of [posts, daily, followers, markers, sync]) if (r.error) throw r.error;
+  for (const r of [posts, daily, followers, markers, sync, account]) if (r.error) throw r.error;
   return {
     live: true,
     lastSync: sync.data[0]?.captured_at ?? null,
@@ -48,7 +50,87 @@ export async function loadStats() {
     daily: daily.data.map((d) => ({ day: d.day, platform: d.platform, impressions: Number(d.impressions), engagements: Number(d.engagements) })),
     followers: followers.data.map((f) => ({ day: f.day, platform: f.platform, followers: Number(f.followers) })),
     markers: markers.data.map(markerRow),
+    account: account.data.filter((a) => a.raw?.day).map((a) => ({ platform: a.platform, ...a.raw })),
   };
+}
+
+// X's account overview export: one row per day with that day's account totals and follows.
+// The follower count isn't in it, so it's rebuilt backwards from real captures: the day before
+// a known count had that count minus the day's new follows plus its unfollows. X's follow and
+// unfollow counts don't track suspended or deleted accounts, so the history is a close estimate.
+const MONTHS = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
+
+function csvRows(text) {
+  const rows = [];
+  for (const line of text.replace(/^\uFEFF/, "").split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const cells = [];
+    for (const m of line.matchAll(/("([^"]|"")*"|[^,]*)(,|$)/g)) {
+      if (m.index === line.length && m[0] === "") break;
+      cells.push(m[1].startsWith('"') ? m[1].slice(1, -1).replace(/""/g, '"') : m[1]);
+    }
+    rows.push(cells);
+  }
+  return rows;
+}
+
+export function parseXOverview(text) {
+  const [head, ...body] = csvRows(text);
+  const key = (h) => h.trim().toLowerCase().replace(/[^a-z]+/g, "_").replace(/^_|_$/g, "");
+  const keys = head.map(key);
+  if (!keys.includes("date") || !keys.includes("impressions") || !keys.includes("new_follows")) {
+    throw new Error("this isn't X's account overview export (needs Date, Impressions and New follows columns)");
+  }
+  return body.map((cells) => {
+    const row = {};
+    keys.forEach((k, i) => { row[k] = k === "date" ? cells[i] : Number(cells[i] ?? 0) || 0; });
+    const m = /(\w{3}) (\d{1,2}), (\d{4})/.exec(row.date ?? "");
+    if (!m) throw new Error(`can't read the date "${row.date}"`);
+    row.day = `${m[3]}-${String(MONTHS[m[1]]).padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+    delete row.date;
+    return row;
+  }).sort((a, b) => b.day.localeCompare(a.day));
+}
+
+const manilaDayOf = (iso) => new Date(Date.parse(iso) + 8 * 3_600_000).toISOString().slice(0, 10);
+
+export async function importXOverview(text) {
+  const days = parseXOverview(text);
+  const supabase = await db();
+  const { data: real, error } = await supabase.from("account_metric_snapshots").select("captured_at, followers")
+    .eq("platform", "x").eq("source", "api").order("captured_at", { ascending: false });
+  if (error) throw error;
+  if (!real.length) throw new Error("no follower count captured yet to rebuild from; resync first");
+  const realByDay = new Map();
+  for (const r of real) if (!realByDay.has(manilaDayOf(r.captured_at))) realByDay.set(manilaDayOf(r.captured_at), Number(r.followers));
+  const anchorDay = manilaDayOf(real[0].captured_at);
+
+  // Days on or after the newest capture are still in progress, so they are left out.
+  const rows = [];
+  let running = null;
+  for (const d of days) {
+    if (d.day > anchorDay) continue;
+    if (d.day === anchorDay) { running = realByDay.get(d.day) - d.new_follows + d.unfollows; continue; }
+    if (running == null) running = Number(real[0].followers);
+    const followers = realByDay.get(d.day) ?? running;
+    rows.push({ captured_at: `${d.day}T15:59:00Z`, followers, raw: { source: "x_account_overview", ...d } });
+    running = followers - d.new_follows + d.unfollows;
+  }
+  const res = await callCollector("?mode=import", { platform: "x", rows });
+  return { ...res, from: rows.at(-1)?.captured_at.slice(0, 10), to: rows[0]?.captured_at.slice(0, 10) };
+}
+
+async function callCollector(query, payload) {
+  const supabase = await db();
+  const { data } = await supabase.auth.getSession();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/collect-stats${query}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${data.session?.access_token}`, apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? `the collector answered ${res.status}`);
+  return body;
 }
 
 // Runs the collector now, as the signed-in editor: finds posts that went live, marks their drafts
@@ -78,7 +160,7 @@ export async function syncIfStale(hours = 20) {
   if (!configured) return null;
   const supabase = await db();
   const { data, error } = await supabase.from("account_metric_snapshots").select("captured_at")
-    .order("captured_at", { ascending: false }).limit(1);
+    .eq("source", "api").order("captured_at", { ascending: false }).limit(1);
   if (error) return null;                               // not an editor: stats are not readable
   const last = data[0] ? Date.parse(data[0].captured_at) : 0;
   if (Date.now() - last < hours * 3_600_000) return null;
@@ -201,6 +283,7 @@ function sampleStats(now) {
 
   return {
     live: false,
+    account: [],
     lastSync: new Date(today.getTime() + 3_600_000).toISOString(),
     posts: rows,
     daily,
