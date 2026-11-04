@@ -182,6 +182,154 @@ export function fxClient(username: string, fetchFn: Fetch = fetch) {
   };
 }
 
+// X without a key, with backups. Per post: FxTwitter (every public number), then vxTwitter (likes, reposts,
+// replies), then X's own embed CDN (likes, replies). Whatever a backup cannot see stays null, and the
+// collector carries the last known value forward. raw.source records which one answered.
+
+const VX_API = "https://api.vxtwitter.com";
+const SYNDICATION = "https://cdn.syndication.twimg.com/tweet-result";
+
+export function syndicationToken(id: string): string {     // the token X's embed script sends with each id
+  return ((Number(id) / 1e15) * Math.PI).toString(36).replace(/(0+|\.)/g, "");
+}
+
+export function parseVxMetrics(t: any): PostMetrics {
+  return {
+    externalId: String(t.tweetID), impressions: null, likes: t.likes ?? null, reposts: t.retweets ?? null,
+    replies: t.replies ?? null, quotes: null, bookmarks: null, clicks: null,
+    raw: { source: "vxtwitter", likes: t.likes, retweets: t.retweets, replies: t.replies },
+  };
+}
+
+export function parseSyndicationMetrics(t: any): PostMetrics {
+  return {
+    externalId: String(t.id_str), impressions: null, likes: t.favorite_count ?? null, reposts: null,
+    replies: t.conversation_count ?? null, quotes: null, bookmarks: null, clicks: null,
+    raw: { source: "syndication", favorite_count: t.favorite_count, conversation_count: t.conversation_count },
+  };
+}
+
+export function xPublicClient(username: string, fetchFn: Fetch = fetch) {
+  const fx = fxClient(username, fetchFn);
+  const user = encodeURIComponent(username);
+  const attempts: ((id: string) => Promise<PostMetrics | null>)[] = [
+    async (id) => {
+      const body = await getJson(fetchFn, `${FX_API}/${user}/status/${id}`, FX_HEADERS);
+      if (!body.tweet) return null;
+      const m = parseFxMetrics(body.tweet);
+      return { ...m, raw: { source: "fxtwitter", ...(m.raw as object) } };
+    },
+    // vxTwitter sits behind Cloudflare, which lets plain HTTP clients through but challenges browser agents.
+    async (id) => parseVxMetrics(await getJson(fetchFn, `${VX_API}/${user}/status/${id}`, { "User-Agent": "curl/8.5.0" })),
+    async (id) => parseSyndicationMetrics(await getJson(fetchFn, `${SYNDICATION}?id=${id}&token=${syndicationToken(id)}`, FX_HEADERS)),
+  ];
+
+  async function one(id: string): Promise<PostMetrics | null> {
+    for (const attempt of attempts) {
+      try {
+        const m = await attempt(id);
+        if (m && m.likes !== null) return m;
+      } catch { /* next source */ }
+    }
+    return null;
+  }
+
+  return {
+    followers: () => fx.followers(),
+    timeline: (since?: string) => fx.timeline(since),
+    async metrics(ids: string[]): Promise<PostMetrics[]> {
+      const out: PostMetrics[] = [];
+      for (const batch of chunks(ids, 5)) out.push(...(await Promise.all(batch.map(one))).filter((m): m is PostMetrics => m !== null));
+      return out;
+    },
+  };
+}
+
+// LinkedIn without the API: the company page as a logged-out visitor sees it. It lists the latest ~10
+// posts with reactions and comments; older posts are read from their own public page. Impressions are
+// only shown to page admins, so they stay null. A post's time is encoded in its activity id.
+
+const LI_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
+  "Accept-Language": "en-US,en;q=0.9",
+};
+
+export function activityTime(urn: string): string {
+  return new Date(Number(BigInt(urn.replace(/\D/g, "")) >> 22n)).toISOString();
+}
+
+const unescapeHtml = (s: string) => s.replace(/<br\s*\/?>/g, "\n").replace(/<[^>]+>/g, "")
+  .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;|&#x27;/g, "'").trim();
+
+export function parseLinkedInPage(html: string): { posts: FoundPost[]; followers: number | null } {
+  const posts: FoundPost[] = [];
+  for (const card of html.split("<article ").slice(1)) {
+    const id = card.match(/data-activity-urn="(urn:li:activity:\d+)"/)?.[1];
+    if (!id || posts.some((p) => p.externalId === id)) continue;
+    const num = (attr: string) => { const v = card.match(new RegExp(`data-num-${attr}="(\\d+)"`))?.[1]; return v ? Number(v) : 0; };
+    const text = card.match(/<p[^>]*attributed-text-segment-list__content[^>]*>([\s\S]*?)<\/p>/)?.[1];
+    posts.push({
+      externalId: id,
+      url: `https://www.linkedin.com/feed/update/${id}/`,
+      copy: text ? unescapeHtml(text) : "",
+      publishedAt: activityTime(id),
+      metrics: {
+        externalId: id, impressions: null, likes: num("reactions"), reposts: null, replies: num("comments"),
+        quotes: null, bookmarks: null, clicks: null, raw: { source: "linkedin-page", reactions: num("reactions"), comments: num("comments") },
+      },
+    });
+  }
+  const f = html.match(/([\d,]+)\s+followers/)?.[1];
+  return { posts, followers: f ? Number(f.replace(/,/g, "")) : null };
+}
+
+export function parseLinkedInPost(id: string, html: string): PostMetrics | null {
+  const card = html.split("<article ").find((c) => c.includes(id)) ?? html;
+  const r = card.match(/data-num-reactions="(\d+)"/)?.[1];
+  if (r === undefined) return null;
+  const c = card.match(/data-num-comments="(\d+)"/)?.[1] ?? "0";
+  return {
+    externalId: id, impressions: null, likes: Number(r), reposts: null, replies: Number(c), quotes: null,
+    bookmarks: null, clicks: null, raw: { source: "linkedin-post", reactions: Number(r), comments: Number(c) },
+  };
+}
+
+export function linkedInPublicClient(page: string, fetchFn: Fetch = fetch) {
+  let cached: Promise<ReturnType<typeof parseLinkedInPage>> | undefined;
+  const companyPage = () => (cached ??= (async () => {
+    const res = await fetchFn(`https://www.linkedin.com/company/${encodeURIComponent(page)}/`, { headers: LI_HEADERS });
+    if (!res.ok) throw new Error(`${res.status} from the LinkedIn company page`);
+    return parseLinkedInPage(await res.text());
+  })());
+
+  return {
+    async followers(): Promise<{ followers: number; raw: unknown }> {
+      const { followers } = await companyPage();
+      if (followers === null) throw new Error("LinkedIn page showed no follower count");
+      return { followers, raw: { source: "linkedin-page", followers } };
+    },
+    async posts(since?: string): Promise<FoundPost[]> {
+      const { posts } = await companyPage();
+      return since ? posts.filter((p) => p.publishedAt >= since) : posts;
+    },
+    async metrics(ids: string[]): Promise<PostMetrics[]> {
+      const onPage = new Map<string, PostMetrics>();
+      try { for (const p of (await companyPage()).posts) onPage.set(p.externalId, p.metrics!); } catch { /* fall back to post pages */ }
+      const out: PostMetrics[] = [];
+      for (const batch of chunks(ids.filter((id) => id.startsWith("urn:li:activity:")), 3)) {
+        out.push(...(await Promise.all(batch.map(async (id) => {
+          if (onPage.has(id)) return onPage.get(id)!;
+          try {
+            const res = await fetchFn(`https://www.linkedin.com/feed/update/${id}/`, { headers: LI_HEADERS });
+            return res.ok ? parseLinkedInPost(id, await res.text()) : null;
+          } catch { return null; }
+        }))).filter((m): m is PostMetrics => m !== null));
+      }
+      return out;
+    },
+  };
+}
+
 // LinkedIn Community Management API, for an organization page the token can administer.
 
 export const LINKEDIN_API = "https://api.linkedin.com/rest";
