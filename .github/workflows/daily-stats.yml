@@ -1,0 +1,32 @@
+# Daily stats pull. Calls the collect-stats function once a day with the website's public
+# (publishable) key from frontend/src/config.js, so no secret is stored anywhere. The function only
+# lets such a call do a normal collect, and skips it when the last capture is under 20 hours old.
+# Opening the calendar or the stats page still pulls as a backup if a run is missed.
+name: Daily stats pull
+
+on:
+  schedule:
+    - cron: "0 1 * * *"     # 01:00 UTC = 09:00 Manila
+  workflow_dispatch:
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: frontend/src/config.js
+          sparse-checkout-cone-mode: false
+      - name: Run the collector
+        run: |
+          URL=$(grep -o 'SUPABASE_URL = "[^"]*"' frontend/src/config.js | cut -d'"' -f2)
+          KEY=$(grep -o 'SUPABASE_ANON_KEY = "[^"]*"' frontend/src/config.js | cut -d'"' -f2)
+          for attempt in 1 2 3; do
+            code=$(curl -s -o out.json -w "%{http_code}" --max-time 150 -X POST "$URL/functions/v1/collect-stats" \
+              -H "apikey: $KEY" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{}')
+            cat out.json; echo
+            if [ "$code" = "200" ] || [ "$code" = "207" ]; then exit 0; fi
+            sleep 60
+          done
+          exit 1
