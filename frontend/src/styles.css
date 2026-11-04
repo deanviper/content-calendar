@@ -17,9 +17,9 @@
   --decide-tint: #2b2414;
   --done: #6b6b6b;            /* published */
   --draft: #7cc4ff;           /* draft: blue */
-  --draft-tint: rgba(124, 196, 255, 0.12);
+  --draft-tint: rgba(124, 196, 255, 0.2);
   --posted: #8be3a5;          /* posted: green */
-  --posted-tint: rgba(139, 227, 165, 0.12);
+  --posted-tint: rgba(139, 227, 165, 0.2);
   --tag: #b4b4b4;
   --warn: #f2b76c;
   --warn-tint: #2b2414;
@@ -59,9 +59,9 @@
   --decide-tint: #fbefdc;
   --done: #8c8c8c;
   --draft: #1f64b8;
-  --draft-tint: rgba(31, 100, 184, 0.09);
+  --draft-tint: rgba(31, 100, 184, 0.14);
   --posted: #1d7a3c;
-  --posted-tint: rgba(29, 122, 60, 0.10);
+  --posted-tint: rgba(29, 122, 60, 0.15);
   --tag: #4f4f4f;
   --warn: #9a5b0c;
   --warn-tint: #fbefdc;
