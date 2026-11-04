@@ -70,6 +70,20 @@ export async function resync() {
   return body;
 }
 
+// The daily pull, without a scheduler secret: when an editor opens the calendar or the stats page and
+// the newest capture is older than `hours`, run the collector once with their session. Returns the
+// collector's answer, or null when nothing was due.
+export async function syncIfStale(hours = 20) {
+  if (!configured) return null;
+  const supabase = await db();
+  const { data, error } = await supabase.from("account_metric_snapshots").select("captured_at")
+    .order("captured_at", { ascending: false }).limit(1);
+  if (error) return null;                               // not an editor: stats are not readable
+  const last = data[0] ? Date.parse(data[0].captured_at) : 0;
+  if (Date.now() - last < hours * 3_600_000) return null;
+  return resync();
+}
+
 function markerRow(m) {
   return { id: m.id, label: m.label, markedAt: m.marked_at, platform: m.platform, note: m.note };
 }

@@ -1,4 +1,5 @@
 import { loadPosts, addComment, deleteComment, savePost, COMMENT_LIMITS, dateIn, zoneLabel, TIME_ZONE, VIEWER_TIME_ZONE, ACCOUNTS } from "./data.js";
+import { syncIfStale } from "./stats-data.js";
 import { currentUser, signInWithGoogle, signOut, onAuthChange } from "./supabase.js";
 import { openComposer, takeStashedDraft } from "./composer.js";
 import { initThemeToggle } from "./theme.js";
@@ -941,6 +942,16 @@ const postsReady = loadPosts()
     console.error(err);
     els.sub.textContent = "Couldn't load posts. Refresh to try again.";
   });
+
+// Pull stats once a day in the background; a run can also mark drafts that went live as posted.
+Promise.all([userReady, postsReady]).then(async () => {
+  if (!isEditor()) return;
+  const out = await syncIfStale().catch((err) => (console.error(err), null));
+  if (!out?.results?.some((r) => r.posted)) return;
+  state.posts = await loadPosts();
+  state.byDay = index(state.posts);
+  render();
+});
 
 // Back from signing in again for Drive: reopen the post that was being written.
 Promise.all([userReady, postsReady]).then(() => {
