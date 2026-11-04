@@ -6,7 +6,7 @@ name: Daily stats pull
 
 on:
   schedule:
-    - cron: "0 1 * * *"     # 01:00 UTC = 09:00 Manila
+    - cron: "0 3 * * *"     # 03:00 UTC: backup to the Supabase pg_cron job at 01:00 (skipped when that ran)
   workflow_dispatch:
 
 jobs:
