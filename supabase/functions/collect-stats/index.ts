@@ -235,8 +235,10 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// The schedule sends the secret; the stats page sends the editor's session, checked against the
-// editors table with the caller's own rights.
+// The stats page sends the editor's session, checked against the editors table with the caller's
+// own rights. A secret-holding scheduler may also call. Anyone else (the daily pg_cron job, which
+// only has the public anon key) gets a plain daily collect, and only when the last one is 20 hours
+// old: it reads public numbers, so the worst a stranger can do is run tomorrow's pull early.
 async function allowed(req: Request): Promise<boolean> {
   const secret = env("COLLECTOR_SECRET");
   if (secret && req.headers.get("x-collector-secret") === secret) return true;
@@ -252,22 +254,31 @@ async function allowed(req: Request): Promise<boolean> {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
-  if (!(await allowed(req))) {
-    return Response.json({ error: "send x-collector-secret or sign in as an editor" }, { status: 401, headers: CORS });
-  }
-
   const url = new URL(req.url);
   const backfill = url.searchParams.get("mode") === "backfill";
   const since = url.searchParams.get("since") ?? undefined;
+
+  const db = createClient(env("SUPABASE_URL")!, env("SUPABASE_SERVICE_ROLE_KEY")!, {
+    auth: { persistSession: false },
+  });
+
+  if (!(await allowed(req))) {
+    if (backfill || since) {
+      return Response.json({ error: "backfills need an editor's session" }, { status: 401, headers: CORS });
+    }
+    const { data: last } = await db.from("account_metric_snapshots").select("captured_at")
+      .order("captured_at", { ascending: false }).limit(1);
+    const age = last?.[0] ? Date.now() - Date.parse(last[0].captured_at) : Infinity;
+    if (age < 20 * 3_600_000) {
+      return Response.json({ skipped: "collected less than 20 hours ago", lastCapture: last![0].captured_at }, { headers: CORS });
+    }
+  }
+
   if (since && Number.isNaN(Date.parse(since))) {
     return Response.json({ error: "since must be a date, e.g. 2026-01-01" }, { status: 400, headers: CORS });
   }
   const lookbackDays = Number(env("LOOKBACK_DAYS") ?? 90);
   const discoverDays = Number(env("DISCOVER_DAYS") ?? 7);
-
-  const db = createClient(env("SUPABASE_URL")!, env("SUPABASE_SERVICE_ROLE_KEY")!, {
-    auth: { persistSession: false },
-  });
 
   // One timestamp per run, to the minute, so a retried run cannot double-count.
   const now = new Date();
