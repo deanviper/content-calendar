@@ -383,6 +383,9 @@ html:has(.day[open]) { overflow: hidden; }
 .pv-author { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .pv-avatar { width: 36px; height: 36px; border-radius: 999px; }
 .pv-li .pv-avatar { border-radius: 8px; }
+.pv-li .pv-person .pv-avatar { width: 48px; height: 48px; border-radius: 999px; object-fit: cover; }
+.pv-person .pv-handle { font-size: 12px; max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv-note { margin: 0 0 12px; padding: 6px 10px; border-radius: 6px; background: var(--line); color: var(--ink-3); font-size: 12px; }
 .pv-who { display: flex; flex-direction: column; line-height: 1.25; }
 .pv-x .pv-who { flex-direction: row; gap: 6px; align-items: baseline; }
 /* Threads: a line runs from each tweet's avatar down to the next tweet's. */

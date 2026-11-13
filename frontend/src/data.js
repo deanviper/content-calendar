@@ -38,6 +38,13 @@ export const ACCOUNTS = {
   discord: { name: "Silencio", handle: "announcements", badge: null },
 };
 
+// Founders' LinkedIn profiles, as their posts will appear. A LinkedIn draft whose first line starts
+// "FOUNDER POST · Thomas" (or Alex) is shown under that person, not the company page.
+export const FOUNDERS = {
+  thomas: { name: "Thomas W. Messerer", headline: "Entrepreneur and Explorer at Heart I CEO & Co-Founder of Silencio Voice AI", avatar: "assets/thomas.png" },
+  alex: { name: "Alexander Messerer, LL.M.", headline: "Building technologies with data & AI", avatar: "assets/alex.png" },
+};
+
 export async function loadPosts() {
   if (!configured) return samplePosts(new Date());
   const supabase = await db();

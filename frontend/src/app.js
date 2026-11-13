@@ -1,4 +1,4 @@
-import { loadPosts, addComment, deleteComment, savePost, markPosted, deletePost, restorePost, COMMENT_LIMITS, dateIn, zoneLabel, TIME_ZONE, VIEWER_TIME_ZONE, ACCOUNTS } from "./data.js";
+import { loadPosts, addComment, deleteComment, savePost, markPosted, deletePost, restorePost, COMMENT_LIMITS, dateIn, zoneLabel, TIME_ZONE, VIEWER_TIME_ZONE, ACCOUNTS, FOUNDERS } from "./data.js";
 import { syncIfStale } from "./stats-data.js";
 import { currentUser, signInWithGoogle, signOut, onAuthChange } from "./supabase.js";
 import { openComposer, takeStashedDraft } from "./composer.js";
@@ -143,9 +143,32 @@ function postsOn(k) {
   return (state.byDay.get(k) ?? []).filter(matchesFilters);
 }
 
+// A founder's LinkedIn post: the draft's first line ("FOUNDER POST · Thomas posts from his own
+// profile...") is a note for the team, not part of the post.
+function founderOf(post) {
+  if (post.platform !== "linkedin") return null;
+  const m = /^FOUNDER POST\s*·\s*(\w+)/i.exec(post.copy);
+  const who = m && FOUNDERS[m[1].toLowerCase()];
+  if (!who) return null;
+  const note = post.copy.split("\n")[0].replace(/^FOUNDER POST\s*·\s*/i, "").trim();
+  return { ...who, first: m[1], note };
+}
+
+function bodyOf(post) {
+  return founderOf(post) ? post.copy.split("\n").slice(1).join("\n").replace(/^\s+/, "") : post.copy;
+}
+
+// The first line people see in lists: a founder post reads "Thomas: <its opening line>".
+function headLine(post) {
+  const f = founderOf(post);
+  const line = bodyOf(post).split("\n").find((l) => l.trim())?.replace(/^#+ /, "").replace(/ ?:[a-z0-9_]+:/gi, "") ?? "";
+  return f ? `${f.first}: ${line}` : line;
+}
+
 function fullText(post) {
+  const body = bodyOf(post);
   const tags = post.hashtags.map((t) => `#${t}`).join(" ");
-  return tags ? `${post.copy}\n\n${tags}` : post.copy;
+  return tags ? `${body}\n\n${tags}` : body;
 }
 
 function el(tag, className, text) {
@@ -330,10 +353,10 @@ function renderLine(post) {
   line.dataset.post = post.id;
   line.append(mark(post.status), el("span", "line-time", timeFmt.format(new Date(post.scheduledAt))), icon(post.platform));
   if (state.view === "week") {
-    line.append(el("span", "line-text", post.copy.split("\n")[0]));
+    line.append(el("span", "line-text", founderOf(post) ? headLine(post) : post.copy.split("\n")[0]));
     if (post.status === "draft") line.append(el("span", "line-status", STATUSES.draft));
   } else {
-    line.append(el("span", "line-text", post.copy.split("\n")[0]));
+    line.append(el("span", "line-text", founderOf(post) ? headLine(post) : post.copy.split("\n")[0]));
   }
   return line;
 }
@@ -407,7 +430,7 @@ function renderPost(post) {
   time.dateTime = post.scheduledAt;
   const status = el("span", `status s-${post.status}`);
   status.append(mark(post.status), STATUSES[post.status] ?? post.status);
-  const snippet = el("span", "post-snippet", post.copy.split("\n").find((l) => l.trim())?.replace(/^#+ /, "").replace(/ ?:[a-z0-9_]+:/gi, "") ?? "");
+  const snippet = el("span", "post-snippet", headLine(post));
   const chevron = el("span", "post-chevron");
   chevron.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
   meta.append(name, time, snippet, status, chevron);
@@ -610,11 +633,12 @@ function renderComments(post) {
 
 // Previews drawn the way each network lays a post out, so copy is judged in place.
 
-function author(platform) {
-  const acc = ACCOUNTS[platform];
-  const row = el("div", "pv-author");
+function author(platform, post = null) {
+  const founder = post && founderOf(post);
+  const acc = founder ? { name: founder.name, handle: founder.headline, badge: null } : ACCOUNTS[platform];
+  const row = el("div", founder ? "pv-author pv-person" : "pv-author");
   const avatar = el("img", "pv-avatar");
-  avatar.src = "assets/mark.svg";
+  avatar.src = founder ? founder.avatar : "assets/mark.svg";
   avatar.alt = "";
   const who = el("div", "pv-who");
   const name = el("span", "pv-name", acc.name);
@@ -640,7 +664,7 @@ function badge(platform, kind) {
 }
 
 function textWithTags(post, node) {
-  node.append(post.copy);
+  node.append(bodyOf(post));
   if (post.hashtags.length) {
     node.append("\n\n");
     post.hashtags.forEach((t, i) => {
@@ -770,7 +794,9 @@ function articleCard(art) {
 
 function previewLinkedIn(post) {
   const pv = el("div", "preview pv-li");
-  pv.append(author("linkedin"));
+  const founder = founderOf(post);
+  if (founder) pv.append(el("p", "pv-note", founder.note));
+  pv.append(author("linkedin", post));
   const text = textWithTags(post, el("p", "pv-text"));
   const fold = PLATFORMS.linkedin.fold;
   if (fullText(post).length > fold) {
@@ -1164,7 +1190,7 @@ function openBin() {
     for (const post of state.bin) {
       const li = el("li", "bin-item");
       const when = `${PLATFORMS[post.platform]?.name ?? post.platform} · ${longDayFmt.format(new Date(post.scheduledAt))}, ${timeFmt.format(new Date(post.scheduledAt))}`;
-      const first = post.copy.split("\n").find((l) => l.trim())?.replace(/^#+ /, "").replace(/ ?:[a-z0-9_]+:/gi, "") ?? "";
+      const first = headLine(post);
       const text = el("div", "bin-text");
       text.append(el("span", "bin-when", when), el("span", "bin-copy", first));
       const back = el("button", "pill", "Restore");
