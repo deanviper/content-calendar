@@ -423,6 +423,8 @@ html:has(.day[open]) { overflow: hidden; }
 .pv-li .pv-media { border-radius: 6px; }
 .pv-media img, .pv-media video, .pv-media iframe { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; object-fit: cover; background: var(--ground); }
 .pv-media video { object-fit: contain; }
+/* A single photo shows whole, at its own shape (a 4:5 poster stays 4:5), as X and LinkedIn show one image. */
+.pv-media.n1 > img { aspect-ratio: auto; height: auto; max-height: 720px; object-fit: contain; }
 
 /* X Articles, as the feed shows them: a bordered card, the cover at 5:2 with X's "Article" tag,
    the title, then four lines of the article's opening. */
