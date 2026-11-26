@@ -143,10 +143,10 @@ function postsOn(k) {
   return (state.byDay.get(k) ?? []).filter(matchesFilters);
 }
 
-// A founder's LinkedIn post: the draft's first line ("FOUNDER POST · Thomas posts from his own
-// profile...") is a note for the team, not part of the post.
+// A founder's own post on LinkedIn or X: the draft's first line ("FOUNDER POST · Thomas posts from
+// his own profile...") is a note for the team, not part of the post.
 function founderOf(post) {
-  if (post.platform !== "linkedin") return null;
+  if (post.platform !== "linkedin" && post.platform !== "x") return null;
   const m = /^FOUNDER POST\s*·\s*(\w+)/i.exec(post.copy);
   const who = m && FOUNDERS[m[1].toLowerCase()];
   if (!who) return null;
@@ -635,7 +635,9 @@ function renderComments(post) {
 
 function author(platform, post = null) {
   const founder = post && founderOf(post);
-  const acc = founder ? { name: founder.name, handle: founder.headline, badge: null } : ACCOUNTS[platform];
+  const acc = founder
+    ? (platform === "x" ? { name: founder.name, handle: founder.x.handle, badge: founder.x.badge } : { name: founder.name, handle: founder.headline, badge: null })
+    : ACCOUNTS[platform];
   const row = el("div", founder ? "pv-author pv-person" : "pv-author");
   const avatar = el("img", "pv-avatar");
   avatar.src = founder ? founder.avatar : "assets/mark.svg";
@@ -726,13 +728,15 @@ function openPlayer(src, title) {
 // by a line from the avatar. Replies have their own Copy, since each one is posted separately.
 function previewX(post) {
   const pv = el("div", "preview pv-x");
+  const founder = founderOf(post);
+  if (founder) pv.append(el("p", "pv-note", founder.note));
   const thread = post.thread ?? [];
   const first = el("div", "pv-tweet");
   const art = articleOf(post);
   if (art) {
-    first.append(author("x"), articleCard(art));
+    first.append(author("x", post), articleCard(art));
   } else {
-    first.append(author("x"), textWithTags(post, el("p", "pv-text")));
+    first.append(author("x", post), textWithTags(post, el("p", "pv-text")));
     const m = media(post);
     if (m) first.append(m);
   }
@@ -754,7 +758,7 @@ function previewX(post) {
       }
       setTimeout(() => { copy.textContent = "Copy"; }, 1600);
     });
-    tweet.append(author("x"), body);
+    tweet.append(author("x", post), body);
     const m = media(post, i + 1);
     if (m) tweet.append(m);
     tweet.append(copy);
